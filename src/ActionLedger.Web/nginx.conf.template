@@ -1,0 +1,163 @@
+# The web image's whole server configuration, templated at container start.
+#
+# AD-16 — the `web` image reads API_UPSTREAM at container start and templates it into this file,
+# so one image serves compose (http://api:8080) and cloud. nginx's own entrypoint runs
+# /docker-entrypoint.d/20-envsubst-on-templates.sh over /etc/nginx/templates/*.template and
+# writes the result to /etc/nginx/conf.d/. The Dockerfile sets
+# NGINX_ENVSUBST_FILTER='^(API_UPSTREAM|NGINX_RESOLVER)$' so envsubst substitutes those two names
+# and leaves nginx's own $uri, $host, $http_host, $scheme, $remote_addr, $request_uri and
+# $proxy_add_x_forwarded_for alone.
+#
+# API_UPSTREAM is scheme://host:port with no trailing slash and no path. A proxy_pass whose value
+# carries a URI part replaces the matched location prefix, which would turn /api/v1/auth/login
+# into /v1/auth/login upstream.
+
+server {
+    listen 80;
+    server_name _;
+
+    # The one host-published port. Nothing downstream needs to know which nginx build this is.
+    server_tokens off;
+
+    # A literal proxy_pass is resolved once, at config load, and the address is then held for the
+    # life of the process. Recreating `api` moves it to a new address on the compose network and
+    # every proxied request 502s while compose still reports api healthy, db healthy, web up — and
+    # `docker compose up -d` does not recreate `web`, so the stack stays broken with no signal.
+    # Naming the upstream through a variable forces nginx to resolve it per request instead, which
+    # needs a resolver: Docker's embedded DNS is 127.0.0.11, and NGINX_RESOLVER is an image ENV so
+    # a cloud deployment can point at its own. `valid=10s` caps how long a moved address is stale;
+    # ipv6=off because the compose network hands out A records only.
+    resolver ${NGINX_RESOLVER} valid=10s ipv6=off;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The server-level types table starts empty and replaces, rather than extends, the http-level
+    # one — so pull the stock map back in first, then add what Blazor needs on top of it.
+    # .wasm is already in the stock map; .dat (the three ICU payloads in _framework/) is not, and
+    # .blat is the satellite-data extension a later localisation story would ship. .dll is
+    # already application/octet-stream in the stock map, and re-declaring it would only earn a
+    # "duplicate extension" warning on every start.
+    include /etc/nginx/mime.types;
+    types {
+        application/octet-stream dat;
+        application/octet-stream blat;
+    }
+    default_type application/octet-stream;
+
+    # The publish output ships a .gz beside every framework asset. Serve them instead of
+    # compressing 79 .wasm files again on every request.
+    gzip_static on;
+
+    # --- the API, on the web origin ---------------------------------------------------------------
+    # AD-13/AD-14 — the browser never learns API_UPSTREAM. It calls /api/v1/... on its own origin
+    # and nginx forwards it, which is why no Api:BaseAddress is configured anywhere.
+    #
+    # NFR-1 — a local model can take most of three minutes. 200 seconds of read and send timeout
+    # on every proxied location, so the proxy is never what cuts an extraction off.
+    #
+    # Each block names the upstream through $upstream so it is re-resolved per request rather than
+    # pinned at config load. A proxy_pass holding a variable no longer passes the request URI
+    # implicitly, so $request_uri is appended explicitly — without it every proxied path collapses
+    # to /.
+    location /api/ {
+        set $upstream ${API_UPSTREAM};
+        proxy_pass $upstream$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 200s;
+        proxy_send_timeout 200s;
+    }
+
+    # AD-13 — Swagger UI is served when ASPNETCORE_ENVIRONMENT is Compose, and browsing it is an
+    # acceptance criterion. Its own fetch of /openapi/v1.json is proxied by the next block.
+    location /swagger {
+        set $upstream ${API_UPSTREAM};
+        proxy_pass $upstream$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 200s;
+        proxy_send_timeout 200s;
+    }
+
+    location /openapi {
+        set $upstream ${API_UPSTREAM};
+        proxy_pass $upstream$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 200s;
+        proxy_send_timeout 200s;
+    }
+
+    # /health and /health/ready are unversioned API routes (ApiRoutePrefix.UnversionedPaths), and
+    # the generated client exposes both. Without this block the SPA fallback below would answer
+    # them with a 200 page of HTML.
+    location /health {
+        set $upstream ${API_UPSTREAM};
+        proxy_pass $upstream$request_uri;
+        proxy_http_version 1.1;
+        proxy_set_header Host $http_host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
+        proxy_read_timeout 200s;
+        proxy_send_timeout 200s;
+    }
+
+    # --- Blazor's startup configuration probe -----------------------------------------------------
+    # WebAssemblyHostBuilder.CreateDefault fetches appsettings.json and appsettings.{Env}.json over
+    # HTTP before the app starts. Neither file exists, and the dev server answers 404, which the
+    # framework tolerates. Under an unguarded SPA fallback it would instead receive index.html with
+    # a 200 and text/html, and the JSON parse would throw before the login page ever rendered.
+    # This pair reproduces the dev server's 404. It is load-bearing, not defensive.
+    location = /appsettings.json {
+        return 404;
+    }
+
+    location ~ ^/appsettings\..+\.json$ {
+        return 404;
+    }
+
+    # --- published assets ---------------------------------------------------------------------
+    # These two are directories of fingerprinted files, not routes, so 404 is the honest answer for
+    # a name that is not there. Without this a corrupt or stale deploy surfaces as an unreadable
+    # wasm or a JSON parse error, because the SPA rule below answers the missing asset with
+    # index.html and a 200. Naming two asset directories is not whitelisting app routes.
+    location /_framework/ {
+        try_files $uri =404;
+    }
+
+    location /_content/ {
+        try_files $uri =404;
+    }
+
+    # --- the SPA ----------------------------------------------------------------------------------
+    # index.html is not fingerprinted and names the fingerprinted assets, so it must never be
+    # cached. Nothing else gets a cache header: css/tokens.css and css/app.css are not
+    # fingerprinted either, so a blanket immutable rule would be wrong.
+    # `expires -1` is the whole rule: it emits Cache-Control: no-cache and an Expires in the past.
+    # An add_header beside it would send Cache-Control twice.
+    location = /index.html {
+        expires -1;
+    }
+
+    # Every unknown path falls back to index.html with a 200 and lets the router decide. Routes
+    # are not whitelisted: /meetings and /actions have no component until Stories 2.2 and 4.3, and
+    # until then App.razor's Not found notice is the state the epic plans for.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

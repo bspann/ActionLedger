@@ -1,0 +1,133 @@
+# ActionLedger — the whole demo in one command.
+#
+#   cp .env.example .env
+#   # then fill the three secrets in .env:
+#   #   Jwt__Key               at least 32 characters
+#   #   Seed__DefaultPassword  the password the seeded demo users share
+#   #   POSTGRES_PASSWORD      and the matching Password= inside Database__ConnectionString
+#   docker compose up
+#
+# Then open http://localhost:8080 and sign in as dana, priya, or marcus.
+#
+# POSTGRES_PASSWORD is only honoured when `db` initialises its volume, so changing the database
+# password after a first run needs `docker compose down -v` — otherwise the old password stays in
+# the volume and every connection fails to authenticate.
+#
+# Docker Desktop is the only prerequisite. No host .NET SDK, no Node, no workload install: the
+# SDK lives inside the api, migrate, and web build stages and never on the machine (NFR-10).
+#
+# Compose auto-loads `.env` for ${...} interpolation *in this file*. What actually puts a key
+# inside a container is the `env_file` declaration on the service. `migrate` and `api` read the
+# whole configuration, so they take the file, `required: true`, and an absent `.env` fails fast
+# naming it (AD-16). `db` and `web` read three keys and one key respectively, so they name those
+# instead — handing the whole file to a database container and to the one container the host port
+# is published on would put Jwt__Key, Seed__DefaultPassword and the Azure key inside both for no
+# reason (NFR5).
+
+name: actionledger
+
+services:
+  # --- database -----------------------------------------------------------------------------------
+  db:
+    image: postgres:18-alpine
+    # Three keys, named one at a time, rather than `env_file`: the whole `.env` would put Jwt__Key,
+    # Seed__DefaultPassword and the Azure key inside a container that reads none of them. The
+    # `:?` form fails `docker compose up` by name instead of creating a database with a blank
+    # password. All three must agree with the Username=, Database=, and Password= inside
+    # Database__ConnectionString; `.env.example` says so beside both halves.
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env, matching Username= in Database__ConnectionString}
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env, matching Database= in Database__ConnectionString}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env, matching Password= in Database__ConnectionString}
+    healthcheck:
+      # -h 127.0.0.1 is load-bearing. Without a host pg_isready asks over the unix socket, and
+      # initdb runs a temporary server with listen_addresses='' — so the check can report healthy
+      # while TCP is still closed and `migrate` then fails with connection refused.
+      test: ["CMD-SHELL", 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    volumes:
+      # postgres:18 puts PGDATA at /var/lib/postgresql/18/docker and declares its volume one level
+      # up, so this is the mount point that actually survives `docker compose down`.
+      - db-data:/var/lib/postgresql
+    # No published port. Nothing outside the compose network has any business reaching it.
+
+  # --- schema -------------------------------------------------------------------------------------
+  # AD-17 — the api never migrates at startup. Schema ships only through the EF migration bundle,
+  # and this one-shot service is the only thing that runs it. It applies and exits; `api` is gated
+  # on it exiting 0.
+  migrate:
+    build:
+      context: .
+      dockerfile: src/ActionLedger.Api/Dockerfile.migrate
+    env_file:
+      - path: .env
+        required: true
+    depends_on:
+      db:
+        condition: service_healthy
+    # A restart policy would turn a one-shot into a loop, and `api` would never see it complete.
+    restart: "no"
+    # The entrypoint is the bundle itself; this is its only argument. The value is interpolated
+    # from `.env` at `docker compose up` time, so no credential lives in this file.
+    command: ["--connection", "${Database__ConnectionString:?set Database__ConnectionString in .env}"]
+
+  # --- api ----------------------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: src/ActionLedger.Api/Dockerfile
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      # AD-13 — the only value besides Development that serves Swagger UI, and browsing /swagger
+      # is an acceptance criterion.
+      ASPNETCORE_ENVIRONMENT: Compose
+    extra_hosts:
+      # AD-17 — so a local model server on the developer's machine resolves from inside the
+      # container on Linux engines as well as on Docker Desktop.
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      # AD-17 names /health as the compose healthcheck. It touches no dependency, so it never
+      # reports the api down because PostgreSQL is slow. curl is installed by the api Dockerfile.
+      # The timeout sits above the 5-second probe budget /health/ready uses, deliberately.
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+    # No published port. The browser reaches the api through the web origin and nothing else.
+
+  # --- web ----------------------------------------------------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: src/ActionLedger.Web/Dockerfile
+    # One key, named, rather than `env_file`: this is the container the host port is published on,
+    # and nothing it runs reads Jwt__Key, Seed__DefaultPassword, or the Azure key.
+    environment:
+      # AD-16 — read at container start and templated into nginx, so one image serves compose and
+      # cloud. The browser never learns this value: it calls /api/v1/... on its own origin.
+      API_UPSTREAM: ${API_UPSTREAM:-http://api:8080}
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      # nginx:alpine ships busybox wget and no curl. Without a check here `up --wait` returns
+      # before nginx is serving and a smoke test has nothing to gate on.
+      test: ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:80/"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    ports:
+      - "8080:80"
+
+volumes:
+  db-data:

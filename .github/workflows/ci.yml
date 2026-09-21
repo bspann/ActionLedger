@@ -2,8 +2,9 @@ name: ci
 
 # The required check on main. Restore, build, and run every test project on the pinned SDK.
 # The Blazor project and its bUnit tests ride `dotnet build` and `dotnet test` through the
-# solution, so there is no separate frontend step and none is coming. Image builds join this
-# workflow in Story 1.7.
+# solution, so there is no separate frontend step and none is coming. The `images` job builds
+# all three images and proves docker-compose.yml parses; it publishes nothing — GHCR and
+# Azure belong to cd.yml, which is a later story.
 
 on:
   pull_request:
@@ -49,3 +50,54 @@ jobs:
       # Runs all eight test projects, Architecture.Tests and Web.Tests among them.
       - name: Test
         run: dotnet test ActionLedger.sln --configuration Release --no-build
+
+  images:
+    name: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # NFR-11 — the pipeline is a deliverable, and AD-17's topology is only real if it builds.
+    # Nothing here pushes: no registry, no credential, no GHCR.
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      # The api image carries both the application and the migration bundle it publishes for the
+      # migrate image and the CD step to run.
+      - name: Build the api image
+        run: docker build --file src/ActionLedger.Api/Dockerfile --tag actionledger-api:ci .
+
+      - name: Build the migrate image
+        run: docker build --file src/ActionLedger.Api/Dockerfile.migrate --tag actionledger-migrate:ci .
+
+      - name: Build the web image
+        run: docker build --file src/ActionLedger.Web/Dockerfile --tag actionledger-web:ci .
+
+      # `.env.example` is placeholders only (AD-16), which is exactly what a parse-and-interpolate
+      # check needs: it proves every ${...} in docker-compose.yml resolves and that the required
+      # env_file is found, without a single real secret in the runner.
+      - name: Check the compose file parses against .env.example
+        run: |
+          cp .env.example .env
+          docker compose config --quiet
+
+      # Everything above pins the topology as text. This is the step that runs it. A one-character
+      # edit — a trailing slash on proxy_pass — ships a green pipeline and a login page that cannot
+      # log in, and file text cannot catch it. The four probes cover the whole chain: the SPA is
+      # served, Blazor's startup config probe 404s instead of getting HTML, the api answers through
+      # the proxy, and /api/v1 reaches the API rather than the SPA fallback.
+      - name: Smoke the stack
+        run: |
+          set -euo pipefail
+          docker compose up -d --wait
+
+          test "$(docker compose ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^migrate ' | cut -d' ' -f2)" = "0"
+
+          curl -fsS http://localhost:8080/ | grep -q '<div id="app">'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/appsettings.json)" = "404"
+          test "$(curl -fsS http://localhost:8080/health)" = '{"status":"healthy"}'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/v1/users)" = "401"
+
+      - name: Tear the stack down
+        if: always()
+        run: docker compose down -v
