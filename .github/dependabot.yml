@@ -1,0 +1,36 @@
+# NFR5: update pull requests for the dependency surface. The npm ecosystem is added
+# when the Angular app lands in Story 1.5.
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies
+    groups:
+      # One pull request for the test stack rather than one per package.
+      testing:
+        patterns:
+          - xunit*
+          - NetArchTest*
+          - Testcontainers*
+          - Microsoft.Playwright
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: chore
+      include: scope
+    labels:
+      - dependencies

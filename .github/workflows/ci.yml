@@ -1,0 +1,49 @@
+name: ci
+
+# The required check on main. Restore, build, and run every test project on the pinned SDK.
+# Angular lint/test/build and image builds join this workflow in Stories 1.5 and 1.7.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
+
+jobs:
+  build-and-test:
+    name: build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      # Pinned to the same SDK global.json pins with rollForward disable, so CI and a clean
+      # clone compile on one feature band.
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.401
+
+      - name: Restore
+        run: dotnet restore ActionLedger.sln
+
+      - name: Build
+        run: dotnet build ActionLedger.sln --configuration Release --no-restore
+
+      # Runs all seven test projects, Architecture.Tests among them.
+      - name: Test
+        run: dotnet test ActionLedger.sln --configuration Release --no-build
