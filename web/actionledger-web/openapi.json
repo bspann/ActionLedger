@@ -1,0 +1,121 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "ActionLedger API",
+    "description": "Turns meeting notes into tracked, attributable action items. Every route lives under /api/v1 except /health, /openapi, and /swagger. Errors are RFC 9457 ProblemDetails whose type is one of validation, unauthorized, forbidden, not-found, or conflict.",
+    "version": "v1"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "Health"
+        ],
+        "summary": "Liveness. Returns 200 whenever the process is serving; it touches no dependency.",
+        "operationId": "GetHealth",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthStatus": {
+        "required": [
+          "status"
+        ],
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "PagedResult": {
+        "title": "PagedResult",
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": { },
+            "description": "This page of results. An operation narrows the item type."
+          },
+          "page": {
+            "minimum": 1,
+            "type": "integer",
+            "description": "The 1-based page number these items came from.",
+            "format": "int32"
+          },
+          "pageSize": {
+            "maximum": 200,
+            "minimum": 1,
+            "type": "integer",
+            "description": "The page size applied, after clamping.",
+            "format": "int32"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer",
+            "description": "The number of matching items across every page.",
+            "format": "int32"
+          }
+        },
+        "description": "The envelope every list endpoint returns."
+      }
+    },
+    "parameters": {
+      "page": {
+        "name": "page",
+        "in": "query",
+        "description": "The 1-based page to return.",
+        "schema": {
+          "minimum": 1,
+          "type": "integer",
+          "format": "int32",
+          "default": 1
+        }
+      },
+      "pageSize": {
+        "name": "pageSize",
+        "in": "query",
+        "description": "Items per page. Values above 200 are clamped to 200.",
+        "schema": {
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer",
+          "format": "int32",
+          "default": 50
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "description": "An HS256 token from POST /api/v1/auth/login carrying sub, name, and role. Send it as: Authorization: Bearer {token}.",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health"
+    }
+  ]
+}
