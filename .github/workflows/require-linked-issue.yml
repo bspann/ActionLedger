@@ -1,0 +1,65 @@
+name: require-linked-issue
+
+# Branch protection can require a status check but cannot require issue linkage natively,
+# so this workflow is that check. Every pull request must name the board issue it delivers.
+
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: require-linked-issue-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  linked-issue:
+    name: linked issue
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Assert the pull request links an issue
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+
+            // The authoritative signal: issues GitHub itself considers linked, whether that came
+            // from a closing keyword in the body or from the Development sidebar.
+            const { repository } = await github.graphql(
+              `query($owner: String!, $repo: String!, $number: Int!) {
+                 repository(owner: $owner, name: $repo) {
+                   pullRequest(number: $number) {
+                     closingIssuesReferences(first: 10) { nodes { number } }
+                   }
+                 }
+               }`,
+              { owner: context.repo.owner, repo: context.repo.repo, number: pr.number }
+            );
+
+            const linked = repository.pullRequest.closingIssuesReferences.nodes.map(n => n.number);
+
+            if (linked.length > 0) {
+              core.info(`Linked issue(s): ${linked.map(n => `#${n}`).join(', ')}`);
+              return;
+            }
+
+            // Fall back to a plain reference in the body, for a pull request that references its
+            // issue without closing it.
+            const body = pr.body ?? '';
+            const shortRef = /(^|[^\w`/])#\d+\b/;
+            const urlRef = new RegExp(
+              `https?://github\\.com/${context.repo.owner}/${context.repo.repo}/issues/\\d+`, 'i');
+
+            if (shortRef.test(body) || urlRef.test(body)) {
+              core.info('Found an issue reference in the pull request body.');
+              return;
+            }
+
+            core.setFailed(
+              'This pull request links no issue. Add a closing keyword (for example "Closes #12") ' +
+              'or reference the board issue in the body, then re-run this check.');
