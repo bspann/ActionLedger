@@ -127,3 +127,7 @@ Desktop.ini
 .claude/settings.local.json
 _bmad/config.user.toml
 _bmad/custom/config.user.toml
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
+_bmad/render/
