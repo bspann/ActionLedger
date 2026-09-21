@@ -2,7 +2,7 @@
 title: 'Story 1.2 — API foundation, ProblemDetails, and the committed OpenAPI contract'
 type: 'feature'
 created: '2026-09-21'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '162584c9c1ae99c196ece11cfc6f1c11e0a6cb0c'
 review_loop_iteration: 0
