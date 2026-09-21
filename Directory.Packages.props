@@ -56,6 +56,14 @@
     <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup Label="Application (Story 1.4)">
+    <!--
+      AddActionLedgerApplication lives in the Application ring, so the ring declares its own DI
+      extension point. Abstractions only, and on AD-1's three-package allowlist. MIT.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
   <ItemGroup Label="Architecture rules">
     <PackageVersion Include="NetArchTest.eNhancedEdition" Version="1.4.5" />
   </ItemGroup>

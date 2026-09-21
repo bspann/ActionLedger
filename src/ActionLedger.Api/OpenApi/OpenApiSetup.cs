@@ -22,11 +22,16 @@ public static class OpenApiSetup
     /// <summary>The component name for the list envelope defined by <see cref="PagedResult{T}"/>.</summary>
     public const string PagedResultComponent = "PagedResult";
 
+    /// <summary>The reusable query parameters every list operation takes.</summary>
+    public static readonly string[] PagingParameterComponents = ["page", "pageSize"];
+
     public static IServiceCollection AddApiOpenApi(this IServiceCollection services) =>
         services.AddOpenApi(DocumentName, options =>
         {
             options.AddDocumentTransformer(DescribeContractAsync);
+            options.AddSchemaTransformer(DescribeEnumsAsStringsAsync);
             options.AddOperationTransformer(RequireBearerWhereAuthorizedAsync);
+            options.AddOperationTransformer(ReusePagingVocabularyAsync);
         });
 
     private static Task DescribeContractAsync(
@@ -69,11 +74,21 @@ public static class OpenApiSetup
     /// Publishes the paging envelope and its two query parameters as reusable components.
     /// </summary>
     /// <remarks>
-    /// No operation references them yet — the first list endpoint is Story 1.4's user roster. They
-    /// are published now because the generated TypeScript client is built from this file, and the
-    /// envelope is a shape the web app should have from its first commit rather than one that
-    /// appears mid-epic. <c>OpenApiContractTests</c> asserts the component keeps matching
-    /// <see cref="PagedResult{T}"/>, so the two cannot drift apart while unreferenced.
+    /// <para>
+    /// Story 1.2 published them unreferenced, for the first list endpoint to pick up. That is
+    /// Story 1.4's user roster: <see cref="ReusePagingVocabularyAsync"/> now points the roster's
+    /// <c>page</c> and <c>pageSize</c> query parameters at these definitions, so the bounds and
+    /// defaults a list operation documents are the ones <see cref="Paging"/> actually applies
+    /// rather than a copy per operation.
+    /// </para>
+    /// <para>
+    /// The envelope schema stays a reference shape rather than something an operation
+    /// <c>$ref</c>s. A list operation's response is generated as a concrete
+    /// <c>PagedResultOfUserSummaryDto</c>, which is what gives the generated client a typed
+    /// <c>items</c>; referencing the untyped envelope instead would throw that away.
+    /// <c>OpenApiContractTests</c> asserts the component keeps matching
+    /// <see cref="PagedResult{T}"/>, so the two cannot drift apart.
+    /// </para>
     /// </remarks>
     private static void AddPagingVocabulary(OpenApiDocument document)
     {
@@ -172,6 +187,66 @@ public static class OpenApiSetup
         {
             [new OpenApiSecuritySchemeReference(BearerSchemeId, context.Document)] = [],
         });
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Publishes every enum as the PascalCase string it is actually serialized as.
+    /// </summary>
+    /// <remarks>
+    /// The generator does not read the MVC serializer's settings, so an enum that
+    /// <c>AddJsonOptions</c>' <c>JsonStringEnumConverter</c> writes as <c>"ActionOfficer"</c> is
+    /// otherwise published as a bare <c>integer</c> with no values. AD-13 makes this file the
+    /// boundary Story 1.5's client is generated from, so that mismatch would type <c>role</c> as
+    /// a number and break on every response that carries one.
+    ///
+    /// The names come from the type itself rather than from a list kept here, so adding a Role or
+    /// renaming one updates the contract by re-exporting and nothing else.
+    /// </remarks>
+    private static Task DescribeEnumsAsStringsAsync(
+        OpenApiSchema schema,
+        OpenApiSchemaTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        Type type = Nullable.GetUnderlyingType(context.JsonTypeInfo.Type) ?? context.JsonTypeInfo.Type;
+
+        if (!type.IsEnum)
+        {
+            return Task.CompletedTask;
+        }
+
+        schema.Type = JsonSchemaType.String;
+        schema.Enum = [.. Enum.GetNames(type).Select(name => (JsonNode)JsonValue.Create(name)!)];
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Replaces a list operation's generated <c>page</c> and <c>pageSize</c> query parameters
+    /// with references to the published components, so the paging vocabulary is defined once.
+    /// </summary>
+    private static Task ReusePagingVocabularyAsync(
+        OpenApiOperation operation,
+        OpenApiOperationTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        if (operation.Parameters is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        for (int index = 0; index < operation.Parameters.Count; index++)
+        {
+            IOpenApiParameter parameter = operation.Parameters[index];
+
+            if (parameter.In == ParameterLocation.Query
+                && parameter.Name is { } name
+                && PagingParameterComponents.Contains(name, StringComparer.Ordinal))
+            {
+                operation.Parameters[index] = new OpenApiParameterReference(name, context.Document);
+            }
+        }
 
         return Task.CompletedTask;
     }

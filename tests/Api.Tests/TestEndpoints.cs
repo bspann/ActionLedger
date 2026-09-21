@@ -72,4 +72,14 @@ public sealed class AuthProbeController : ControllerBase
     [HttpGet("lead-only")]
     [Authorize(Roles = "Lead")]
     public IActionResult LeadOnly() => Ok(new { user = User.Identity?.Name });
+
+    /// <summary>
+    /// Echoes the actor the container resolved for this request. AD-12's <c>ICurrentUser</c> has
+    /// no production caller until the first write use case, so without a route that resolves it
+    /// through DI its registration and its lifetime would both be unexercised — and the lifetime
+    /// is the behaviour, because the class snapshots the claims at construction.
+    /// </summary>
+    [HttpGet("current-user")]
+    public IActionResult CurrentActor([FromServices] ICurrentUser current) =>
+        Ok(new { current.UserId, current.DisplayName, Role = current.Role.ToString() });
 }

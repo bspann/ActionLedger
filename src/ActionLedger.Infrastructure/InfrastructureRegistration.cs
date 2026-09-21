@@ -22,9 +22,13 @@ namespace ActionLedger.Infrastructure;
 public static class InfrastructureRegistration
 {
     /// <summary>
-    /// Registers <see cref="AppDbContext"/>, the repositories, the unit of work, the readiness
-    /// probe, the password hasher, and the system clock.
+    /// Registers <see cref="AppDbContext"/>, the repositories, the read seam, the unit of work,
+    /// the readiness probe, the password hasher and verifier, and the system clock.
     /// </summary>
+    /// <remarks>
+    /// Nothing here needs an <c>HttpContext</c>. AD-1 Rule 4 keeps the claims-backed
+    /// <c>ICurrentUser</c> and the token issuer in the Api ring, where the <c>Jwt</c> options live.
+    /// </remarks>
     /// <param name="services">The container.</param>
     /// <param name="connectionString">
     /// Reads <c>Database:ConnectionString</c> from the validated options. It is read on first
@@ -40,10 +44,12 @@ public static class InfrastructureRegistration
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IReadDb, ReadDb>();
         services.AddScoped<SeedRepository>();
         services.AddScoped<DatabaseReadiness>();
 
         services.AddSingleton<PasswordService>();
+        services.AddSingleton<IPasswordVerifier, PasswordVerifier>();
         services.AddSingleton<IClock, SystemClock>();
 
         return services;
