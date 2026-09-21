@@ -2,7 +2,7 @@
 title: 'Story 1.1 — Green pipeline on an empty Clean Architecture solution'
 type: 'chore'
 created: '2026-09-20'
-status: 'review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'NO_VCS' # no git repository existed at baseline
 review_loop_iteration: 0
