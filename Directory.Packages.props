@@ -1,0 +1,21 @@
+<Project>
+
+  <!--
+    Central Package Management. Versions come from the architecture spine's Stack table.
+    Every package here is MIT, Apache-2.0, or BSD (NFR9). Excluded by license:
+    FluentAssertions 8+, MediatR 13+, AutoMapper 15+, MassTransit 9, JsonSchema.Net.
+  -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup Label="Testing">
+    <PackageVersion Include="xunit.v3" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup Label="Architecture rules">
+    <PackageVersion Include="NetArchTest.eNhancedEdition" Version="1.4.5" />
+  </ItemGroup>
+
+</Project>
