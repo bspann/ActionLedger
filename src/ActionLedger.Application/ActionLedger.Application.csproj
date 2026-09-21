@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    AD-1: Application references Domain and nothing else. Its only permitted packages are
+    Microsoft.Extensions.Logging.Abstractions, Microsoft.Extensions.DependencyInjection.Abstractions,
+    and System.Text.Json.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../ActionLedger.Domain/ActionLedger.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

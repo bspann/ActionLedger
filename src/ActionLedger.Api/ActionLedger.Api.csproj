@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- AD-1: the outermost ring. No project may reference Api. -->
+  <ItemGroup>
+    <ProjectReference Include="../ActionLedger.Application/ActionLedger.Application.csproj" />
+    <ProjectReference Include="../ActionLedger.Infrastructure/ActionLedger.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

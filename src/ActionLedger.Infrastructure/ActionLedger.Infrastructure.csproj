@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- AD-1: Infrastructure may reference Application and Domain only. -->
+  <ItemGroup>
+    <ProjectReference Include="../ActionLedger.Application/ActionLedger.Application.csproj" />
+    <ProjectReference Include="../ActionLedger.Domain/ActionLedger.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
