@@ -5,8 +5,9 @@ namespace ActionLedger.Api.Tests;
 
 /// <summary>
 /// AD-13 — the committed <c>openapi.json</c> is the contract between the Api and the web app.
-/// Story 1.5 generates the Angular client from that file, so a route or DTO that changes without
-/// a re-export would leave the web build compiling against a contract the Api no longer serves.
+/// The Blazor project generates its typed C# client from that file in a pre-build target, so a
+/// route or DTO that changes without a re-export would leave the web build compiling against a
+/// contract the Api no longer serves.
 /// This test is what makes "regenerate and commit" a rule rather than a habit.
 /// </summary>
 public sealed class OpenApiSnapshotTest

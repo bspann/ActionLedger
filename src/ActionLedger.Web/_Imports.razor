@@ -1,0 +1,8 @@
+@* AD-14 — System.Net.Http is deliberately absent here. HTTP lives in Core/ and Features/*/Data/,
+   and those files write their own usings, so no component picks one up by ambient import. *@
+@using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@using MudBlazor
+@using ActionLedger.Web
+@using ActionLedger.Web.Layout

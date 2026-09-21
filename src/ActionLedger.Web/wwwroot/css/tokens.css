@@ -1,0 +1,108 @@
+/*
+  The ActionLedger design delta, verbatim from DESIGN.md's front matter.
+
+  MudBlazor supplies primary, secondary, tertiary, error, and the surface and outline ramp, and no
+  MudBlazor component is restyled. What this file adds is the four semantic colour families the
+  product's one visual idea needs — AI provenance, human provenance, low confidence, success —
+  plus the quiet neutral container, the three base container-tier pairs the brand layer leans on
+  (MudBlazor has no Material 3 container tier), two type roles, and three layout values.
+
+  Dark mode redefines the same property names under prefers-color-scheme: dark rather than adding
+  a parallel -dark set, so a consumer writes var(--al-ai-provenance-container) once and is correct
+  in both modes. MudThemeProvider's ObserveSystemDarkModeChange keys off the same media query, so
+  both layers flip on one signal.
+*/
+
+:root {
+  /* Base container tier — Material 3 azure-blue values, pinned because MudBlazor has no container tier. */
+  --al-primary-container: #D3E4FF;
+  --al-on-primary-container: #001C38;
+  --al-error-container: #FFDAD6;
+  --al-on-error-container: #410002;
+  --al-surface-container-low: #F3F5F9;
+  --al-on-surface: #1A1C1E;
+
+  /* AI provenance — anything the model produced. */
+  --al-ai-provenance: #5B3E96;
+  --al-ai-provenance-container: #EADDFF;
+  --al-on-ai-provenance-container: #2A0E5C;
+
+  /* Human provenance — decisions and edits a person made. */
+  --al-human-provenance: #1F5F8B;
+  --al-human-provenance-container: #D6EAF8;
+  --al-on-human-provenance-container: #0B2A40;
+
+  /* Low confidence — the one warning colour. Never used for Overdue. */
+  --al-low-confidence: #8A5000;
+  --al-low-confidence-container: #FFF1DC;
+  --al-on-low-confidence-container: #4A2A00;
+
+  /* Success — Approved and Edited review states, Complete action status. Not used for buttons. */
+  --al-success: #1B5E20;
+  --al-success-container: #E3F2E5;
+  --al-on-success-container: #0D3A11;
+
+  /* Neutral container — Open, Cancelled, Rejected, and the Pending counter. Deliberately quiet. */
+  --al-neutral-container: #E8EAED;
+  --al-on-neutral-container: #3C4043;
+
+  /*
+    Layout. content-max and page-gutter are also what MudContainer MaxWidth.Large with gutters
+    already emits; they are declared here because DESIGN.md names them and the Review screen's
+    two-pane layout will reference them, and the token test pins them so the two cannot diverge.
+  */
+  --al-content-max: 1280px;
+  --al-page-gutter: 24px;
+  --al-notes-pane-min: 360px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --al-primary-container: #00497D;
+    --al-on-primary-container: #D3E4FF;
+    --al-error-container: #93000A;
+    --al-on-error-container: #FFDAD6;
+    --al-surface-container-low: #1F2124;
+    --al-on-surface: #E2E2E6;
+
+    --al-ai-provenance: #D0BCFF;
+    --al-ai-provenance-container: #4A2D82;
+    --al-on-ai-provenance-container: #EADDFF;
+
+    --al-human-provenance: #9CCAF0;
+    --al-human-provenance-container: #154466;
+    --al-on-human-provenance-container: #D6EAF8;
+
+    --al-low-confidence: #FFB870;
+    --al-low-confidence-container: #4A2E00;
+    --al-on-low-confidence-container: #FFE2C2;
+
+    --al-success: #8BD48F;
+    --al-success-container: #1E4A22;
+    --al-on-success-container: #D9F2DB;
+
+    --al-neutral-container: #3C4043;
+    --al-on-neutral-container: #E8EAED;
+  }
+}
+
+/*
+  The two type roles the delta adds. Everything else inherits the MudTheme Roboto ramp.
+
+  A Confidence Score is always a two-decimal number in monospace so 0.55 and 0.85 line up in a
+  column. ui-monospace is the fallback that keeps that true when Roboto Mono did not load.
+*/
+.al-confidence-score {
+  font-family: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+/* Quoted notes text on proposal cards and audit entries. */
+.al-source-excerpt {
+  font-family: 'Roboto', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.5;
+}

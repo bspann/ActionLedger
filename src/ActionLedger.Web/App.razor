@@ -1,0 +1,15 @@
+@* The router is part of the scaffold: MainLayout has nothing to host @Body for without it. The
+   assembly holds no @page yet, which is the correct interim state — Story 1.6 owns every routable
+   component, and a placeholder home page that exists only to be deleted next story is worse than
+   an empty router. NotFound is one line until 1.6 replaces it with the real Not found page. *@
+<Router AppAssembly="@typeof(WebAssemblyMarker).Assembly">
+    <Found Context="routeData">
+        <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
+    </Found>
+    <NotFound>
+        <LayoutView Layout="@typeof(MainLayout)">
+            <MudText Typo="Typo.body1">Not found.</MudText>
+        </LayoutView>
+    </NotFound>
+</Router>

@@ -1,7 +1,7 @@
 name: codeql
 
-# NFR5 security baseline. JavaScript/TypeScript joins the matrix when the Angular app
-# lands in Story 1.5.
+# NFR5 security baseline. C# is the whole analyzable surface: the web app is Blazor
+# WebAssembly, so no second language joins the matrix (sprint change 2026-09-21).
 
 on:
   pull_request:

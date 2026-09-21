@@ -5,7 +5,7 @@ namespace ActionLedger.Api.OpenApi;
 
 /// <summary>
 /// AD-13 — <c>openapi.json</c> is generated, never hand-written, and committed at
-/// <c>web/actionledger-web/openapi.json</c>. This is the generator behind
+/// <c>src/ActionLedger.Web/openapi.json</c>. This is the generator behind
 /// <c>dotnet run --project src/ActionLedger.Api -- --export-openapi</c>.
 /// </summary>
 /// <remarks>
@@ -26,7 +26,7 @@ public static class OpenApiExport
     public const string Flag = "--export-openapi";
 
     /// <summary>Where the contract is committed, relative to the repository root.</summary>
-    public const string ContractRelativePath = "web/actionledger-web/openapi.json";
+    public const string ContractRelativePath = "src/ActionLedger.Web/openapi.json";
 
     /// <summary>
     /// Splits <c>--export-openapi [path]</c> off the command line. The flag is removed before the
@@ -116,7 +116,7 @@ public static class OpenApiExport
     }
 
     /// <summary>
-    /// Finds <c>web/actionledger-web/openapi.json</c> by walking up to the directory holding
+    /// Finds <c>src/ActionLedger.Web/openapi.json</c> by walking up to the directory holding
     /// <c>ActionLedger.sln</c>, so the export lands in the repository whether it was started from
     /// the solution root, the project directory, or the build output.
     /// </summary>

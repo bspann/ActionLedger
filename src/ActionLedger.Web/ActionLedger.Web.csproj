@@ -1,0 +1,64 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <RootNamespace>ActionLedger.Web</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    AD-13, AD-1 Rule 4 — deliberately no ProjectReference. The committed openapi.json beside this
+    file is the boundary between the Api and the web app, not a shared assembly. Sharing the
+    Application DTOs directly would let a server-side refactor reshape the client in silence.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
+    <PackageReference Include="MudBlazor" />
+    <PackageReference Include="NSwag.MSBuild" PrivateAssets="all" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <GeneratedApiClient>Core/Api/ActionLedgerApiClient.g.cs</GeneratedApiClient>
+  </PropertyGroup>
+
+  <!--
+    The generated client is git-ignored and absent on a clean clone, so the SDK's source glob is
+    evaluated before it exists. Take it out of the glob entirely and let GenerateApiClient add it,
+    which keeps exactly one Compile item for it on both the first build and every later one.
+  -->
+  <ItemGroup>
+    <Compile Remove="$(GeneratedApiClient)" />
+  </ItemGroup>
+
+  <!--
+    AD-13 — the typed client is generated from the committed contract before every compile.
+    /JsonLibrary:SystemTextJson is load-bearing: NSwag defaults to Newtonsoft.Json attributes
+    against a package this project does not have. /GenerateClientInterfaces:true is what lets a
+    test stub the client without a mocking package. /UseBaseUrl:false leaves addressing to the
+    HttpClient, which is what the nginx upstream in Story 1.7 needs.
+    Inputs/Outputs make an unchanged contract skip the generator. The project file is an input
+    too, so bumping the pinned NSwag version regenerates rather than leaving a client built by
+    the old generator in place until the contract happens to change.
+  -->
+  <Target Name="GenerateApiClient"
+          BeforeTargets="BeforeCompile"
+          Inputs="openapi.json;$(MSBuildProjectFullPath)"
+          Outputs="$(GeneratedApiClient)">
+    <Exec WorkingDirectory="$(MSBuildProjectDirectory)"
+          Command="$(NSwagExe_Net100) openapi2csclient /input:openapi.json /classname:ActionLedgerApiClient /namespace:ActionLedger.Web.Core.Api /output:$(GeneratedApiClient) /JsonLibrary:SystemTextJson /GenerateNullableReferenceTypes:true /GenerateClientInterfaces:true /UseBaseUrl:false" />
+    <!--
+      NSwag leaves the file alone when the generated text is unchanged, so without this the
+      output stays older than the inputs and the target reruns on every single build. Touching it
+      is what makes "an unchanged contract skips the generator" true on the second build.
+    -->
+    <Touch Files="$(GeneratedApiClient)" />
+  </Target>
+
+  <Target Name="IncludeGeneratedApiClient"
+          BeforeTargets="BeforeCompile"
+          DependsOnTargets="GenerateApiClient">
+    <ItemGroup>
+      <Compile Include="$(GeneratedApiClient)" />
+    </ItemGroup>
+  </Target>
+
+</Project>
