@@ -1,9 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
+  <PropertyGroup>
+    <RootNamespace>ActionLedger.Api</RootNamespace>
+    <!-- Api.Tests drives the host through WebApplicationFactory<Program>. -->
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+  </PropertyGroup>
+
   <!-- AD-1: the outermost ring. No project may reference Api. -->
   <ItemGroup>
     <ProjectReference Include="../ActionLedger.Application/ActionLedger.Application.csproj" />
     <ProjectReference Include="../ActionLedger.Infrastructure/ActionLedger.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Api.Tests" />
   </ItemGroup>
 
 </Project>
