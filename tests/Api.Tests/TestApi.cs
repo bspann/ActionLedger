@@ -25,6 +25,13 @@ public class TestApi : WebApplicationFactory<Program>
 
     public const string Issuer = "actionledger-tests";
 
+    /// <summary>
+    /// A password invented for one call. NFR5 keeps credential values out of this repository, and
+    /// a shared test constant is still a credential in a public one — so a test seeds with what
+    /// this returns and asserts against that same value, never against something on disk.
+    /// </summary>
+    public static string NewPassword() => $"test-{Guid.CreateVersion7():N}";
+
     /// <summary>The configuration a valid host needs. Tests override or remove single keys from it.</summary>
     public static Dictionary<string, string?> ValidConfiguration() => new(StringComparer.Ordinal)
     {

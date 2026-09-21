@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ActionLedger.Api.OpenApi;
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Domain.Users;
 using Xunit;
 
 namespace ActionLedger.Api.Tests;
@@ -78,6 +79,28 @@ public sealed class OpenApiContractTests
         Assert.Equal("http", bearer.GetProperty("type").GetString());
         Assert.Equal("bearer", bearer.GetProperty("scheme").GetString());
         Assert.Equal("JWT", bearer.GetProperty("bearerFormat").GetString());
+    }
+
+    [Fact]
+    public async Task Enums_are_published_as_the_strings_they_are_serialized_as()
+    {
+        JsonElement contract = await ContractAsync();
+
+        JsonElement role = contract
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty(nameof(Role));
+
+        // The document generator does not read the MVC serializer's settings, so without a
+        // transformer this is published as a bare integer while the wire carries "ActionOfficer" —
+        // and Story 1.5's client, generated from this file, would type `role` as a number.
+        Assert.Equal("string", role.GetProperty("type").GetString());
+
+        string[] published = [.. role.GetProperty("enum").EnumerateArray().Select(value => value.GetString()!)];
+
+        // Pinned to the Domain enum, so adding or renaming a Role fails here until the contract
+        // is re-exported rather than drifting silently.
+        Assert.Equal(Enum.GetNames<Role>(), published);
     }
 
     [Fact]

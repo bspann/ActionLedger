@@ -6,6 +6,8 @@ using ActionLedger.Api.Health;
 using ActionLedger.Api.Observability;
 using ActionLedger.Api.OpenApi;
 using ActionLedger.Api.Routing;
+using ActionLedger.Application;
+using ActionLedger.Application.Abstractions;
 using ActionLedger.Infrastructure;
 using ActionLedger.Infrastructure.Persistence;
 using ActionLedger.Infrastructure.Seed;
@@ -47,6 +49,18 @@ builder.Services.AddActionLedgerSeeding(services =>
 
     return new SeedSettings(seed.Enabled, seed.DefaultPassword);
 });
+
+// AD-2 — the handlers and per-feature query classes. The ring registers its own use cases; the
+// composition root only adds the ports it is the right ring to own.
+builder.Services.AddActionLedgerApplication();
+
+// AD-12 — the two Api-ring ports. They live here, not in Infrastructure: the token issuer needs
+// JwtOptions, the current user needs HttpContext, and AD-1 Rule 4 forbids Infrastructure seeing
+// either. ICurrentUser throws when nothing authenticated the request, so it is only ever resolved
+// behind [Authorize].
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
+builder.Services.AddScoped<ICurrentUser, ClaimsPrincipalCurrentUser>();
 
 builder.Services
     .AddControllers(options => options.Conventions.Add(new ApiRoutePrefixConvention()))
