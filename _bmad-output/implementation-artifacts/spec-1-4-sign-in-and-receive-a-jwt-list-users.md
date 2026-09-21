@@ -2,7 +2,7 @@
 title: 'Story 1.4 — Sign in and receive a JWT; list users'
 type: 'feature'
 created: '2026-09-21'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: '63432a988749a690d632f5d5e3ce73f682c4b832'
 review_loop_iteration: 0
