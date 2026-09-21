@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    AD-1: the innermost ring. This project must never carry a PackageReference
+    or a ProjectReference. Architecture.Tests fails the build if one appears.
+  -->
+
+</Project>
