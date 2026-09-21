@@ -59,6 +59,48 @@ public sealed class StartupValidationTests
     }
 
     [Fact]
+    public async Task Seeding_without_a_password_fails_the_host_naming_the_key()
+    {
+        // NFR5 — the demo password comes from the environment or user secrets and has no default
+        // anywhere in the repository. A host told to seed without one has to stop and say so; the
+        // failure it must never have is starting anyway with a credential someone can read here.
+        await using TestApi api = new()
+        {
+            ConfigurationOverrides =
+            {
+                ["Seed:Enabled"] = "true",
+                ["Seed:DefaultPassword"] = null,
+            },
+        };
+
+        OptionsValidationException failure =
+            await Assert.ThrowsAsync<OptionsValidationException>(() => Task.Run(() => api.CreateClient(), TestContext.Current.CancellationToken));
+
+        Assert.Contains("Seed:DefaultPassword", string.Join(" ", failure.Failures), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Seeding_off_needs_no_password()
+    {
+        // The key is required only when it is going to be used, so cd.yml and every test that
+        // does not want demo data keep booting without one.
+        await using TestApi api = new()
+        {
+            ConfigurationOverrides =
+            {
+                ["Seed:Enabled"] = "false",
+                ["Seed:DefaultPassword"] = null,
+            },
+        };
+
+        using HttpClient client = api.CreateClient();
+
+        HttpResponseMessage response = await client.GetAsync("/health", TestContext.Current.CancellationToken);
+
+        response.EnsureSuccessStatusCode();
+    }
+
+    [Fact]
     public async Task A_complete_configuration_starts()
     {
         await using TestApi api = new();
