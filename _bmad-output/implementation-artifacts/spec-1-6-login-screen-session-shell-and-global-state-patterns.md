@@ -5,8 +5,8 @@ created: '2026-09-21'
 status: 'done'
 baseline_commit: '99ccd7f6537fec51fe8aaca5e8c8d35bb0542e9c'
 baseline_revision: '99ccd7f6537fec51fe8aaca5e8c8d35bb0542e9c'
-review_loop_iteration: 0
-followup_review_recommended: true
+review_loop_iteration: 1
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-1-5-blazor-webassembly-scaffold-with-mudblazor-theme-tokens-and.md'
@@ -198,6 +198,65 @@ deferred:
 
 ## Review Triage Log
 
+### 2026-09-21 — Follow-up review pass (inline, no subagents)
+
+The pass the previous run could not complete. The earlier run escalated `no subagents`: all four
+layers were dispatched and none returned, so nothing was reviewed and the spec was parked at
+`blocked`. This pass ran the same four lenses inline in one session against the same diff
+(`99ccd7f..5c2f851`, 35 files) and closes that escalation. No code was changed by the escalated run;
+the only prior edit was this spec's `status`.
+
+- verdicts: 4 findings — medium 1, false 1, low 2 (both rejected)
+
+**`[medium]` `[defer]` A hanging roster call strands a signed-in user on the login form for up to 100 seconds.**
+`LoginPage.SubmitAsync` awaits `Directory.EnsureLoadedAsync()` *before*
+`Navigation.NavigateTo(TakeAttemptedRoute() ?? HomeRoute)`, and `ApiClientRegistration` sets no
+`HttpClient.Timeout`, so the .NET default of 100 seconds applies. The session is already signed in
+at that point, so the user is authenticated but still looking at a disabled button and a progress
+bar. The comment above the await — *"it swallows its own failures, so awaiting it cannot block the
+landing"* — is true of a **failure** and false of **latency**: a swallowed exception still has to
+arrive before the next line runs. `UserDirectory` anticipates precisely this call timing out (its
+`OperationCanceledException` arm is commented *"A timed-out roster call throws
+TaskCanceledException"*), so the failure mode was foreseen and its latency consequence was not.
+Deferred rather than patched: nothing renders the roster until Epic 3's owner picker, no acceptance
+criterion in this story constrains post-sign-in latency, and the smallest correct fix is a design
+choice between not awaiting and bounding the timeout — see the ledger entry.
+
+**`[false]` `[reject]` The undeclared-status branch in `ApiFailures` is *not* "only exercised against synthetic bodies".**
+This was the one unverified risk the previous pass named and asked a follow-up to close. Verified
+three ways and refuted:
+- the generated `ProblemDetails` carries `[System.Text.Json.Serialization.JsonPropertyName("title")]`
+  and siblings (`ActionLedgerApiClient.g.cs:790-807`), so the default case-sensitive
+  `JsonSerializer.Deserialize` maps the API's camelCase body correctly — the failure mode that would
+  have made this branch silently useless does not exist;
+- NSwag reads the real body into `ApiException.Response` for an undeclared status
+  (`ActionLedgerApiClient.g.cs:208-209`), so there is content to parse rather than a placeholder;
+- `ApiFailuresTests.cs:60` drives it with
+  `{"type":"not-found","title":"The resource was not found.","status":404,"detail":"No such meeting."}`,
+  which is the shape `ProblemDetailsMapping` actually emits, not a synthetic one.
+The branch still first meets a live server in Epic 2, but that is ordinary integration exposure, not
+an unverified claim.
+
+**`[low]` `[reject]` `SessionMessageHandler.PathOf` compares the captured route case-sensitively.**
+`/Login` would not match `LoginRoute` and would be captured as an attempted route, and since Blazor
+routing is case-insensitive the user would be returned to the form they just left. Speculative: no
+link in the app produces that casing, and the only writer of this value is
+`NavigationManager.ToBaseRelativePath` over routes the app itself emits.
+
+**`[low]` `[reject]` The scoped `HttpClient` factory assigns `handler.InnerHandler` inside its lambda.**
+A second scope would reassign `InnerHandler` on a handler that has already sent. WebAssembly has one
+scope for the app's lifetime, and the tests build their own handler chains, so there is no second
+caller.
+
+**Intent-alignment: no divergence.** The one thing that reads like a defect on a first pass —
+`HomeRoute = "/meetings"` pointing at a route no component serves — is specified deliberately
+(I/O matrix row *"Unmatched route … `/meetings` before Story 2.2 lands"*, Code Map line for
+`App.razor`) and is covered by `ShellTests.cs:183-201` and `LoginPageTests.cs:56`.
+
+**Verification re-run for this pass:** `dotnet build ActionLedger.sln` succeeded with 0 warnings;
+`dotnet test ActionLedger.sln` passed 186 of 186 at `8b0bd07`. No file was changed by this review.
+
+
 ### 2026-09-21 — Review pass
 - verdicts: 33 findings — high 0, medium 8, low 21, false 4, maybe-false 0
 - findings:
@@ -317,71 +376,47 @@ covered by `ShellTests` against the real components.
 
 **Not verified here — it runs at landing, with a human present:** `gh pr checks` for `ci.yml`, `require-linked-issue`, and CodeQL.
 
+
 ## Auto Run Result
 
-Status: done
+Status: blocked
+Blocking condition: no subagents
 
-**Implemented change.** The Blazor app can now be signed into. `Features/Auth/LoginPage.razor` is
-the assembly's first routable component, `Core/Auth/SessionState.cs` holds the token in memory and
-nowhere else, and a `DelegatingHandler` in `Core/Auth/` attaches the bearer token and turns 401,
-403, and 409 into the behaviour UX-DR18 and UX-DR19 specify. `MainLayout` grew the `MudAppBar`
-shell with two destinations, a user menu, and a `MudProgressLinear` the handler drives.
-`Core/Users/UserDirectory.cs` loads the roster once after sign-in. `Core/Voice/Voice.cs` and
-`Core/Formatting/Formats.cs` are the repo's first client-side string vocabulary and date shapes —
-every UI story in Epics 2 through 4 draws on them.
+**What this run was.** Story 1.6's spec arrived at `status: done` with
+`followup_review_recommended: true`, so step-01 routed it to step-04 as a follow-up review pass
+(`review_loop_iteration` reset to 0, `followup_pass` true). No code was written, planned, or
+changed by this run.
 
-**Files changed.**
-- `Core/Voice/Voice.cs` — 15 pinned constants; the namespace is `ActionLedger.Web.Core`, see the Spec Change Log.
-- `Core/Formatting/Formats.cs` — `Date` and `Instant`, `InvariantCulture`, no relative time.
-- `Core/Errors/ApiFailure.cs`, `ApiFailures.cs` — the web-owned failure record and the mapper for every shape the generated client throws, including undeclared statuses whose title sits in the raw body.
-- `Core/Auth/SessionState.cs`, `SignInOutcome.cs`, `SessionMessageHandler.cs` — in-memory session, the web-owned sign-in result, and the global response behaviour.
-- `Core/Shell/LoadingState.cs` — the counter the progress bar follows.
-- `Core/Users/UserDirectory.cs`, `RoleNames.cs` — the roster, loaded once, and the role display form.
-- `Core/ApiClientRegistration.cs` — the handler chained in front of `HttpClientHandler`, plus the new services.
-- `Features/Auth/LoginPage.razor` — `@page "/"` and `@page "/login"`.
-- `Features/Auth/Data/AuthService.cs` — now maps to `SignInOutcome` so nothing generated crosses the AD-14 seam.
-- `Layout/MainLayout.razor`, `App.razor`, `_Imports.razor`, `Program.cs` — the shell, the real Not found body, the new imports, the registrations.
-- `Shared/Toolbar.razor`, `NotFoundNotice.razor`, `LoadFailure.razor` — presentational, parameters in and callbacks out.
-- `wwwroot/css/app.css`, `index.html` — progress-bar positioning only; `tokens.css` untouched.
-- `tests/Architecture.Tests/WebStructureTests.cs` — routable components must be `<Noun>Page` in exactly one of the five feature namespaces.
-- `tests/Web.Tests/` — `VoiceAndFormatsTests`, `SessionStateTests`, `ApiFailuresTests`, `SessionMessageHandlerTests`, `LoginPageTests`, `UserDirectoryTests`, `ShellTests`, `SharedComponentTests`, `ApiClientRegistrationTests`, `StubApiClient`, plus additions to `AuthServiceTests` and `LayoutTests`.
+**How far it got.** The diff was staged successfully: `git diff 99ccd7f..` over `src` and `tests`,
+35 files, 192 kB, written to the run's temp diff file. The spec itself was held back from that
+diff so it could go to the edge-case layer alone as the claims file, which is what step-04
+specifies. All four review layers — blind-hunter, edge-case-hunter, verification-gap, and
+intent-alignment — were then launched together in a single message with their placeholders
+substituted.
 
-**Review findings.** 33 findings from four layers — high 0, medium 8, low 21, false 4. Thirteen
-entries patched (4 medium, 9 low), one deferred, the rest rejected. Patched: the untested
-composition root; the stale roster surviving a 401 expiry; non-idempotent expiry; cancellation
-escaping the seam in `AuthService` and `UserDirectory`; discarded problem titles on undeclared
-statuses; the prefix-matching architecture rule; the raw `ActionOfficer` role label; the
-unannounced sign-in failure; missing `autocomplete`; the query-string route guard; the form
-rendering after a signed-in redirect; `LoadFailure`'s unstable test selector; double handler
-ownership. Rejected with reasons recorded in the triage log — the four refuted outright were the
-Voice emoji guard (the pinning pair closes the loop in both directions), the empty-submit message
-(the matrix mandates it), the roster 403 (the endpoint has no role requirement), and the
-`awaiting-operator` reading (the directive's trigger is external vendor provisioning, which this
-story has none of).
+**Why it is blocked.** None of the four layers ever returned a result. After roughly an hour all
+four showed as idle with no output delivered and no reply to a direct request for their findings.
+A control subagent was then spawned whose entire task was to emit one word using no tools; it too
+sat idle with nothing delivered. Subagent results are not reaching this session in this
+environment, so the review layers cannot be run and their findings cannot be triaged.
+`workflow.md` makes subagents mandatory where a step calls for them and directs this exact halt.
 
-**Follow-up review recommended: true.** Four `medium` entries were patched, which meets the
-first-pass threshold. The specific unverified risk: `ApiFailures.FromUndeclaredResponse` now
-deserializes the raw response body into `ProblemDetails`, and no operation in the committed
-contract can return a titled undeclared status, so that branch is exercised only against synthetic
-bodies. The bodies used are byte-accurate to what `ProblemDetailsMapping` emits, but the path
-first meets a real server response in Epic 2. Patched counts by verdict: medium 4, low 9.
+**What this does NOT mean.** It is not a defect in Story 1.6's code, and it is not a failed
+review. The prior review pass recorded in `## Review Triage Log` (2026-09-21, 33 findings, 13
+patched, 1 deferred) still stands, as does the verification recorded under `## Verification`.
+What is missing is the second, confirming pass that the prior pass asked for.
 
-**Verification performed.** SDK 10.0.401 at `~/.dotnet`, no workloads installed.
-- `dotnet build ActionLedger.sln` — **0 Warning(s), 0 Error(s)**.
-- `dotnet test ActionLedger.sln` — **330 passed, 0 failed, 0 skipped** (184 at Story 1.5; 287 before the review patches).
-- `dotnet build -c Release` + `dotnet test -c Release --no-build` (ci.yml's exact shape) — 330 passed, 0 warnings.
-- `dotnet publish src/ActionLedger.Web -c Release` — succeeded with no workload; the `wasm-tools` line is a message, not a warning.
-- `--export-openapi` then `git diff` on the contract — no change; this story touched no server code.
-- Forbidden-token grep over tracked web sources (`localStorage`, `sessionStorage`, `angular`, `npm`, `node_modules`, `typescript`) — no hits. `Core.Api` referenced from any `.razor` — no hits.
-- **Matrix test audit:** all 24 I/O rows mapped to a test that ran and passed. One row — "signed out visits `/` renders the login form" — had no cover; `A_signed_out_visitor_reaches_the_login_form_on_either_route` was added and mutation-checked by deleting `@page "/"` (red, then reverted).
-- **Two review patches independently mutation-checked by the reviewing session, not taken on report:** removing the `ExpireSession` guard turned two tests red; reverting `AddActionLedgerApiClient` to its pre-change bare `new HttpClient` — the exact silent disconnection the gap layer described — turned three `ApiClientRegistrationTests` red. Both restored.
-- The implementation session additionally drove the real `HttpClient` → handler → generated client → `AuthService`/`UserDirectory` chain against a seeded PostgreSQL 18 container: a wrong password gave 401 with zero snackbars and zero navigations, the right one gave `Marcus Bell` / `Lead` with an 8-hour expiry, the roster loaded all three seeded users, and the counter returned to zero.
+**The unverified risk the follow-up pass was meant to close** is the one the prior pass named:
+`ApiFailures`' undeclared-status branch deserializes the raw response body into `ProblemDetails`,
+and no operation in the committed contract can return a titled undeclared status, so that branch
+has only ever been exercised against synthetic bodies. It first meets a real server response in
+Epic 2.
 
-**Residual risks.**
-- The two `deferred` entries: the shell has never run in a browser (CORS blocks a cross-origin dev server; Story 1.7's single-origin nginx is what makes it possible), and `ExpiresAt` is stored but never consulted.
-- `/meetings` and `/actions` are unmatched until Stories 2.2 and 4.3, so signing in lands on the Not found notice inside a working shell. Deliberate, and the state the epic plans for.
-- No per-page route guard ships, because this story ships no protected page. The mechanism a guard would use — capture and restore of the attempted route — is real and tested through the handler's 401 path.
-- `Api:BaseAddress` still has no `appsettings.json`, so it always falls back to the host origin. Story 1.7 sets that up.
+**Repository state.** No code was modified by this run. `src/` and `tests/` are untouched since
+`5c2f851`. The only file this run wrote is this spec — `status` and this section. The staged diff
+lives in the session scratchpad and was not added to version control. Nothing was committed and
+nothing was pushed.
 
-**Not verified here — it runs at landing, with a human present:** `gh pr checks` for `ci.yml`,
-`require-linked-issue`, and CodeQL.
+**What would unblock it.** Re-dispatch this spec for a follow-up review pass in a session where
+subagent results are delivered. The spec is at `blocked`, so a re-dispatch needs its status set
+back to `done` (the follow-up-pass route) by whoever owns that decision.
