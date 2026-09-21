@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 09-20-2026 12:20
-last_updated: '09-20-2026 22:57'
+last_updated: '09-20-2026 23:22'
 project: ActionLedger
 project_key: NOKEY
 tracking_system: file-system
@@ -37,7 +37,7 @@ story_location: _bmad-output/implementation-artifacts
 development_status:
   epic-1: in-progress
   1-1-green-pipeline-on-an-empty-clean-architecture-solution: done
-  1-2-api-foundation-with-versioned-routes-problemdetails-and-the: backlog
+  1-2-api-foundation-with-versioned-routes-problemdetails-and-the: review
   1-3-database-first-migration-migration-bundle-and-seeded-users: backlog
   1-4-sign-in-and-receive-a-jwt-list-users: backlog
   1-5-angular-scaffold-with-material-theme-tokens-and-the-generate: backlog
