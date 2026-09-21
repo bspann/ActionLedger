@@ -1,0 +1,29 @@
+# Build output and tooling caches. Copying these into the build context makes the image build
+# slow and, worse, lets host-specific obj/ state win over a clean restore inside the container.
+**/bin/
+**/obj/
+**/TestResults/
+**/node_modules/
+**/.angular/
+**/dist/
+
+# Local environment and secrets — never into an image.
+.env
+.env.local
+**/*.local.json
+**/secrets.json
+
+# Version control, editor, and agent state.
+.git/
+.github/
+.vs/
+.vscode/
+.idea/
+.agents/
+.claude/
+.bmad-loop/
+_bmad/
+_bmad-output/
+
+# OS
+.DS_Store

@@ -60,16 +60,16 @@ public sealed class RouteDisciplineTests
     }
 
     [Fact]
-    public async Task Readiness_is_not_mapped_until_there_is_a_database_to_be_ready_for()
+    public async Task Readiness_is_mapped_and_sits_under_the_health_allowlist()
     {
-        // AD-13 specifies /health/ready; Story 1.3 is where it becomes real. Asserting its absence
-        // keeps a probe from being wired to something that cannot yet answer honestly.
+        // AD-13 lists /health/ready among the four unversioned routes. Story 1.2 asserted it was
+        // absent, because there was no database for it to be honest about; this story is where it
+        // becomes real. What it answers is ReadinessTests' subject — this is the route rule.
         await using TestApi api = new();
         using HttpClient client = api.CreateClient();
 
-        HttpResponseMessage response = await client.GetAsync("/health/ready", TestContext.Current.CancellationToken);
-
-        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Contains("/health/ready", RoutePatterns(api));
+        Assert.DoesNotContain("/health/ready", RoutePatterns(api).Where(IsOutsideTheRules));
     }
 
     private static bool IsOutsideTheRules(string route) =>

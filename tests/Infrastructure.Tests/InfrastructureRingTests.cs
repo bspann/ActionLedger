@@ -3,8 +3,9 @@ using Xunit;
 namespace ActionLedger.Infrastructure.Tests;
 
 /// <summary>
-/// Wiring placeholder for the Infrastructure ring (AD-18: Testcontainers PostgreSQL, real AppDbContext).
-/// Testcontainers arrives with Story 1.3; this project must not need Docker before then.
+/// The ring loads at all. Everything else in this project runs against a real PostgreSQL through
+/// <see cref="PostgresFixture"/> (AD-18), so this is the one test here that needs no Docker — and
+/// the one that still says something useful when Docker is what broke.
 /// </summary>
 public sealed class InfrastructureRingTests
 {

@@ -17,6 +17,12 @@
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUI" />
     <PackageReference Include="Serilog.AspNetCore" />
+    <!--
+      `dotnet ef` needs Design on the startup project to build the model and produce the
+      migration bundle. Build-time only: PrivateAssets="all" keeps it out of what the api
+      publishes and out of anything that references this project.
+    -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

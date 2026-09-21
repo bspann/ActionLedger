@@ -19,6 +19,7 @@ public static class ApiOptionsRegistration
         Bind<SeedOptions>(services, configuration, SeedOptions.SectionName);
 
         services.AddSingleton<IValidateOptions<AiOptions>, AiOptionsValidator>();
+        services.AddSingleton<IValidateOptions<SeedOptions>, SeedOptionsValidator>();
 
         return services;
     }
@@ -74,5 +75,29 @@ internal sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         {
             failures.Add($"{key} is required when Ai:Provider is {provider}.");
         }
+    }
+}
+
+/// <summary>
+/// The one <c>Seed</c> rule data annotations cannot express: the demo password is required only
+/// when seeding is on.
+/// </summary>
+/// <remarks>
+/// NFR5 keeps the value itself out of the repository, so there is no default to fall back to —
+/// which is the point. A host asked to seed without a password stops here, naming the key, rather
+/// than creating accounts whose password is in the source.
+/// </remarks>
+internal sealed class SeedOptionsValidator : IValidateOptions<SeedOptions>
+{
+    public ValidateOptionsResult Validate(string? name, SeedOptions options)
+    {
+        if (!options.Enabled || !string.IsNullOrWhiteSpace(options.DefaultPassword))
+        {
+            return ValidateOptionsResult.Success;
+        }
+
+        return ValidateOptionsResult.Fail(
+            $"{SeedOptions.DefaultPasswordKey} is required when {SeedOptions.SectionName}:Enabled is true. "
+            + "Supply it from the environment or user secrets; there is no default.");
     }
 }

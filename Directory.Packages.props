@@ -13,6 +13,7 @@
   <ItemGroup Label="Testing">
     <PackageVersion Include="xunit.v3" Version="4.0.1" />
     <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.12" />
+    <PackageVersion Include="Testcontainers.PostgreSql" Version="4.15.0" />
   </ItemGroup>
 
   <!--
@@ -34,6 +35,25 @@
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.12" />
     <PackageVersion Include="Swashbuckle.AspNetCore.SwaggerUI" Version="10.2.3" />
     <PackageVersion Include="Serilog.AspNetCore" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup Label="Persistence (Story 1.3)">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.12" />
+    <!--
+      `dotnet ef` needs Design on the project it builds the model from. It is a build-time
+      dependency (PrivateAssets="all"), so nothing it carries reaches the published api.
+    -->
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.12" />
+    <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
+    <!-- IHostedService for DemoDataSeeder, without Infrastructure taking the whole host. -->
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.12" />
+    <!--
+      PasswordHasher<User> (AD-12). The type lives in namespace Microsoft.AspNetCore.Identity;
+      the package that ships it on .NET 10 is Microsoft.Extensions.Identity.Core — the old
+      Microsoft.AspNetCore.Identity package id stopped at 2.3.x. MIT, so NFR9 holds.
+    -->
+    <PackageVersion Include="Microsoft.Extensions.Identity.Core" Version="10.0.12" />
   </ItemGroup>
 
   <ItemGroup Label="Architecture rules">

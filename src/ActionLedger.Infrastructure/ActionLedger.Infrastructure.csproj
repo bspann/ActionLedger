@@ -6,4 +6,20 @@
     <ProjectReference Include="../ActionLedger.Domain/ActionLedger.Domain.csproj" />
   </ItemGroup>
 
+  <!--
+    Everything that knows about a database, a password hash, or a host lives in this ring and
+    stops here. AD-1 Rule 3 fails the build if any of it drifts into Domain or Application.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Identity.Core" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Infrastructure.Tests" />
+  </ItemGroup>
+
 </Project>

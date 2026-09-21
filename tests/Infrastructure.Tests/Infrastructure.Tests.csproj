@@ -8,6 +8,8 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" />
+    <!-- AD-18: Infrastructure is tested against a real PostgreSQL, never an in-memory provider. -->
+    <PackageReference Include="Testcontainers.PostgreSql" />
   </ItemGroup>
 
   <ItemGroup>
