@@ -2,7 +2,7 @@
 title: 'Story 1.4 — Sign in and receive a JWT; list users'
 type: 'feature'
 created: '2026-09-21'
-status: 'done'
+status: 'in-review'
 route: 'dispatch'
 baseline_commit: '63432a988749a690d632f5d5e3ce73f682c4b832'
 review_loop_iteration: 0
@@ -320,46 +320,3 @@ rather than pass silently.
 - Decoding a token from `POST /api/v1/auth/login` — done live, in the second table above.
 - Both 401 login responses — done live; identical including `detail`.
 
-## Auto Run Result
-
-Status: done
-Blocking condition: none
-
-**Implemented change.** `POST /api/v1/auth/login` issues an 8-hour HS256 JWT carrying `sub`, `name`, and `role` against the key, issuer, and short claim names Story 1.2's bearer scheme already validated, and `GET /api/v1/users` returns the paged roster of non-system users to any authenticated caller. Three seams every later story builds on land with it: the first `<Verb><Noun>Handler`, the first `<Feature>Queries` over a new `IReadDb` read port, and the claims-backed `ICurrentUser`. These are the repository's first two controllers.
-
-**Files changed.**
-
-| File | Change |
-|------|--------|
-| `Directory.Packages.props` | Pins `Microsoft.Extensions.DependencyInjection.Abstractions` (MIT, on AD-1's allowlist) |
-| `src/ActionLedger.Application/Abstractions/IReadDb.cs` | AD-2's read seam, carrying its own materialization so EF never reaches this ring |
-| `src/ActionLedger.Application/Abstractions/IPasswordVerifier.cs` | Port with an Application-owned `PasswordCheck`, keeping the Identity enum in Infrastructure |
-| `src/ActionLedger.Application/Abstractions/IAccessTokenIssuer.cs` | Port returning token plus expiry, keeping `Microsoft.IdentityModel.*` out of the ring |
-| `src/ActionLedger.Application/Auth/SignInHandler.cs` | The handler, its command and result; one failure value for every way a sign-in fails |
-| `src/ActionLedger.Application/Users/UsersQueries.cs` | The roster query: non-system filter, total order, overflow-safe paging |
-| `src/ActionLedger.Application/Users/UserSummaryDto.cs` | The only user shape that crosses the boundary |
-| `src/ActionLedger.Application/ApplicationRegistration.cs` | `AddActionLedgerApplication()`, the ring's own composition point |
-| `src/ActionLedger.Infrastructure/Auth/PasswordVerifier.cs` | The one place `PasswordVerificationResult` is read |
-| `src/ActionLedger.Infrastructure/Persistence/ReadDb.cs` | `IReadDb` over `AppDbContext`, untracked |
-| `src/ActionLedger.Infrastructure/InfrastructureRegistration.cs` | Registers the verifier and the read seam |
-| `src/ActionLedger.Api/Auth/JwtAccessTokenIssuer.cs` | Mints the token, avoiding the outbound claim map |
-| `src/ActionLedger.Api/Auth/ClaimsPrincipalCurrentUser.cs` | The actor from the token; throws rather than inventing one |
-| `src/ActionLedger.Api/Controllers/AuthController.cs` | `[AllowAnonymous]` login; one neutral 401 detail |
-| `src/ActionLedger.Api/Controllers/UsersController.cs` | `[Authorize]` roster |
-| `src/ActionLedger.Api/OpenApi/OpenApiSetup.cs` | Enums published as strings; paging parameters reused by reference |
-| `src/ActionLedger.Api/Program.cs` | Wires the Application ring and the two Api-ring ports |
-| `web/actionledger-web/openapi.json` | Re-exported: both operations, the string `Role`, the paging `$ref`s |
-| `tests/Application.Tests/**`, `tests/Api.Tests/**`, `tests/Infrastructure.Tests/ReadSeamTests.cs` | 43 new cases across the handler, the query, the endpoints, the auth walk, the actor, and the read seam |
-| `_bmad-output/implementation-artifacts/epic-1-context.md` | Recompiled: the cache predated the 2026-09-21 Angular-to-Blazor sprint change |
-
-**Review findings.** 30 findings across four layers — high 1, medium 8, low 17, false 4. **13 patched** (1 high, 5 medium, 7 low), **1 deferred** (medium), **16 rejected**. Every rejection and its reason is recorded row by row in the Review Triage Log above; the substantive ones were the timing side channel (the demo usernames are published, so there is nothing to enumerate), the ordering-comparer mismatch (latent for ASCII names), the under-described `ProblemDetails` schema (additive, needs a further transformer), and four findings whose only fix was to edit this spec.
-
-**Follow-up review recommended: true.** A `high` was patched this pass. The named residual risk is the enum-serialization fix: `DescribeEnumsAsStringsAsync` now rewrites *every* enum in the document from the type's names, and Story 1.4 has exactly one enum to prove it on. A later enum needing `[JsonStringEnumMemberName]`, `[Flags]`, or a non-default converter would be published under its CLR names, and the raw-wire assertion that makes this honest exists only for `Role`. Patched by verdict: high 1, medium 5, low 7.
-
-**Verification performed.** `dotnet build` clean with 0 warnings; `dotnet test ActionLedger.sln` 117 passed, 0 failed, 0 skipped, in Debug and in Release with `--no-build` (CI's exact shape). `--export-openapi` with `Database__ConnectionString`, `Jwt__Key`, and `Jwt__Issuer` unset and no database reachable exits 0, and the document it writes is byte-identical to the committed file — the story-1.3 export trap survives two controllers and two transformers. The published `Role` is `{"enum":["ActionOfficer","Lead"],"type":"string"}` and the roster's parameters are `$ref`s to the published components. Credential sweep across `src`, `tests`, `.env.example`, and `appsettings*.json` returns nothing. Every one of the I/O matrix's twelve rows maps to a named test that ran and passed; the test list was enumerated directly to confirm nothing was filtered or skipped.
-
-**Residual risks.**
-- Sign-in is unthrottled and unlogged — deferred above with the reasoning.
-- `ICurrentUser` is now exercised through the container, but no production handler consumes it yet; the "handlers never accept an actor id from a request body" half of the acceptance criterion holds because no handler takes one, not because anything enforces it. The first write use case is where that becomes a real guarantee.
-- Roster ordering is `ORDER BY display_name` under the database's collation, while the Application-ring tests assert under LINQ-to-Objects' comparer. They agree for the seeded ASCII names and could disagree for a name with a diacritic or punctuation.
-- CI checks (`build and test`, `require-linked-issue`, CodeQL) run at landing with a human present. The Release run above is that job's exact shape and `ubuntu-latest` has a Docker daemon, so the container suites are covered by the existing required check with no workflow change.
