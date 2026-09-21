@@ -1,0 +1,22 @@
+@* EXPERIENCE.md, State Patterns — "Not found." with a link to the parent list. Presentational:
+   parameters in, nothing else.
+
+   The name is NotFoundNotice rather than NotFound so it cannot collide with the <NotFound>
+   parameter tag inside <Router>, which App.razor hands this component to.
+
+   The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to on an unmatched
+   route. Until Stories 2.2 and 4.3 land, /meetings and /actions reach this component, so it is
+   the shell's only content for most of the demo build. *@
+<MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@Voice.NotFound</MudText>
+
+<MudLink Href="@ParentHref">@ParentLabel</MudLink>
+
+@code {
+    /// <summary>The parent list to offer. Meetings is the app's home destination.</summary>
+    [Parameter]
+    public string ParentHref { get; set; } = "/meetings";
+
+    /// <summary>The link's text. Drawn from <c>Voice</c> so the copy stays in one vocabulary.</summary>
+    [Parameter]
+    public string ParentLabel { get; set; } = Voice.Meetings;
+}

@@ -1,4 +1,7 @@
+using ActionLedger.Web.Core;
 using ActionLedger.Web.Core.Api;
+using ActionLedger.Web.Core.Auth;
+using ActionLedger.Web.Core.Users;
 using ActionLedger.Web.Features.Auth.Data;
 using Xunit;
 
@@ -6,9 +9,9 @@ namespace ActionLedger.Web.Tests;
 
 /// <summary>
 /// AD-14 and AD-18 — a per-feature data service is the only place its feature reaches the API,
-/// and it is testable with the generated client stubbed. The stub below is hand-written because
-/// the repository takes no mocking package (NFR8, NFR9); <c>/GenerateClientInterfaces:true</c> on
-/// the generator is what makes writing one possible at all.
+/// it is testable with the generated client stubbed, and it maps on the way out so no generated
+/// type escapes the seam. The stub is hand-written because the repository takes no mocking
+/// package (NFR8, NFR9).
 /// </summary>
 public sealed class AuthServiceTests
 {
@@ -20,20 +23,82 @@ public sealed class AuthServiceTests
 
         await service.SignInAsync("ada", "correct horse", TestContext.Current.CancellationToken);
 
-        Assert.NotNull(client.LastCommand);
-        Assert.Equal("ada", client.LastCommand.Username);
-        Assert.Equal("correct horse", client.LastCommand.Password);
+        Assert.NotNull(client.LastSignInCommand);
+        Assert.Equal("ada", client.LastSignInCommand.Username);
+        Assert.Equal("correct horse", client.LastSignInCommand.Password);
     }
 
     [Fact]
-    public async Task Sign_in_returns_the_result_the_client_produced()
+    public async Task Sign_in_maps_the_result_onto_web_owned_session_fields()
     {
         StubApiClient client = new();
+        client.SignInResult.Token = "jwt";
+        client.SignInResult.ExpiresAt = new DateTimeOffset(2026, 9, 21, 22, 3, 0, TimeSpan.Zero);
+        client.SignInResult.User.Id = Guid.Parse("01999999-0000-7000-8000-00000000abcd");
+        client.SignInResult.User.DisplayName = "Marcus Bell";
+
         AuthService service = new(client);
 
-        SignInResult result = await service.SignInAsync("ada", "correct horse", TestContext.Current.CancellationToken);
+        SignInOutcome outcome = await service.SignInAsync("marcus", "pw", TestContext.Current.CancellationToken);
 
-        Assert.Same(client.Result, result);
+        Assert.Null(outcome.Failure);
+        Assert.NotNull(outcome.User);
+        Assert.Equal("jwt", outcome.User.Token);
+        Assert.Equal(new DateTimeOffset(2026, 9, 21, 22, 3, 0, TimeSpan.Zero), outcome.User.ExpiresAt);
+        Assert.Equal(Guid.Parse("01999999-0000-7000-8000-00000000abcd"), outcome.User.UserId);
+        Assert.Equal("Marcus Bell", outcome.User.DisplayName);
+
+        // The generated Role enum may not cross the seam, so the outcome carries its name.
+        Assert.Equal(RoleNames.Lead, outcome.User.Role);
+    }
+
+    [Theory]
+    [InlineData(Role.Lead, "Lead")]
+    [InlineData(Role.ActionOfficer, "Action Officer")]
+    public async Task Sign_in_maps_the_role_to_the_glossarys_wording(Role role, string expected)
+    {
+        // The enum spells it ActionOfficer because that is the wire format. Nobody reading the
+        // toolbar should see it that way, and every other test here signs in a Lead, where the
+        // two spellings happen to agree.
+        StubApiClient client = new();
+        client.SignInResult.User.Role = role;
+
+        AuthService service = new(client);
+
+        SignInOutcome outcome = await service.SignInAsync("ada", "pw", TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, outcome.User?.Role);
+    }
+
+    [Fact]
+    public async Task A_timed_out_login_comes_back_as_a_failure_rather_than_an_exception()
+    {
+        // A timeout throws TaskCanceledException, which is neither an ApiException nor an
+        // HttpRequestException. Uncaught it escapes as an unhandled component exception instead
+        // of the load-failure notice with Retry that the matrix requires.
+        StubApiClient client = new() { SignInThrows = new TaskCanceledException("the request timed out") };
+        AuthService service = new(client);
+
+        SignInOutcome outcome = await service.SignInAsync("ada", "pw", TestContext.Current.CancellationToken);
+
+        Assert.Null(outcome.User);
+        Assert.NotNull(outcome.Failure);
+        Assert.Equal(Voice.UnexpectedFailureTitle, outcome.Failure.Title);
+    }
+
+    [Fact]
+    public async Task A_cancellation_the_caller_asked_for_still_propagates()
+    {
+        // Rendering "Couldn't load." at someone who navigated away would be wrong. The catch is
+        // for failures, not for the caller's own decision to stop.
+        StubApiClient client = new() { SignInThrows = new TaskCanceledException() };
+        AuthService service = new(client);
+
+        using CancellationTokenSource source = new();
+        await source.CancelAsync();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(
+            () => service.SignInAsync("ada", "pw", source.Token));
     }
 
     [Fact]
@@ -46,51 +111,48 @@ public sealed class AuthServiceTests
 
         await service.SignInAsync("ada", "correct horse", source.Token);
 
-        Assert.Equal(source.Token, client.LastCancellationToken);
+        Assert.Equal(source.Token, client.LastSignInCancellationToken);
     }
 
-    /// <summary>
-    /// A hand-written stand-in for the generated client. Only the login operation is exercised;
-    /// the rest of the interface throws, so a service that quietly grew a second call fails here.
-    /// </summary>
-    private sealed class StubApiClient : IActionLedgerApiClient
+    [Fact]
+    public async Task A_refusal_comes_back_as_a_failure_rather_than_an_exception()
     {
-        internal SignInCommand? LastCommand { get; private set; }
+        // Without this catch, LoginPage would have to catch ApiException itself — and it cannot,
+        // because ApiException is a Core.Api type and Features.Auth is outside the seam.
+        StubApiClient client = new() { SignInThrows = StubApiClient.Problem(401, "Authentication is required.") };
+        AuthService service = new(client);
 
-        internal CancellationToken LastCancellationToken { get; private set; }
+        SignInOutcome outcome = await service.SignInAsync("ada", "wrong", TestContext.Current.CancellationToken);
 
-        internal SignInResult Result { get; } = new()
-        {
-            Token = "stub-token",
-            ExpiresAt = DateTimeOffset.UnixEpoch,
-            User = new UserSummaryDto { Id = Guid.Empty, DisplayName = "Ada", Role = Role.Lead },
-        };
+        Assert.Null(outcome.User);
+        Assert.NotNull(outcome.Failure);
+        Assert.Equal(401, outcome.Failure.StatusCode);
+        Assert.Equal("Authentication is required.", outcome.Failure.Title);
+    }
 
-        public Task<SignInResult> SignInAsync(SignInCommand body) =>
-            SignInAsync(body, CancellationToken.None);
+    [Fact]
+    public async Task A_transport_failure_comes_back_as_a_failure_rather_than_an_exception()
+    {
+        // HttpRequestException is not an ApiException, so it needs its own catch in the service.
+        StubApiClient client = new() { SignInThrows = new HttpRequestException("no route to host") };
+        AuthService service = new(client);
 
-        public Task<SignInResult> SignInAsync(SignInCommand body, CancellationToken cancellationToken)
-        {
-            LastCommand = body;
-            LastCancellationToken = cancellationToken;
+        SignInOutcome outcome = await service.SignInAsync("ada", "pw", TestContext.Current.CancellationToken);
 
-            return Task.FromResult(Result);
-        }
+        Assert.Null(outcome.User);
+        Assert.NotNull(outcome.Failure);
+        Assert.Equal(Voice.UnexpectedFailureTitle, outcome.Failure.Title);
+    }
 
-        public Task<HealthStatus> GetHealthAsync() => throw NotExercised();
+    [Fact]
+    public async Task Sign_in_calls_the_login_operation_and_nothing_else()
+    {
+        StubApiClient client = new();
+        AuthService service = new(client);
 
-        public Task<HealthStatus> GetHealthAsync(CancellationToken cancellationToken) => throw NotExercised();
+        await service.SignInAsync("ada", "correct horse", TestContext.Current.CancellationToken);
 
-        public Task<HealthStatus> GetReadinessAsync() => throw NotExercised();
-
-        public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
-
-        public Task<PagedResultOfUserSummaryDto> ListUsersAsync(int? page, int? pageSize) => throw NotExercised();
-
-        public Task<PagedResultOfUserSummaryDto> ListUsersAsync(int? page, int? pageSize, CancellationToken cancellationToken) =>
-            throw NotExercised();
-
-        private static NotSupportedException NotExercised() =>
-            new("AuthService is expected to call the login operation and nothing else.");
+        Assert.Equal(1, client.SignInCalls);
+        Assert.Equal(0, client.ListUsersCalls);
     }
 }

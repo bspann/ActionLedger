@@ -1,7 +1,10 @@
-@* The router is part of the scaffold: MainLayout has nothing to host @Body for without it. The
-   assembly holds no @page yet, which is the correct interim state — Story 1.6 owns every routable
-   component, and a placeholder home page that exists only to be deleted next story is worse than
-   an empty router. NotFound is one line until 1.6 replaces it with the real Not found page. *@
+@* Story 1.6 fills the router the scaffold shipped. LoginPage is the only routable component in
+   the assembly; /meetings and /actions land on NotFound until Stories 2.2 and 4.3 add them,
+   which is the state the epic plans for — an honest Not found inside a working shell beats a
+   placeholder page that exists only to be deleted next story.
+
+   FocusOnNavigate moves focus to the first h1 on every navigation, so every routable component
+   and the notice below has to render one. *@
 <Router AppAssembly="@typeof(WebAssemblyMarker).Assembly">
     <Found Context="routeData">
         <RouteView RouteData="@routeData" DefaultLayout="@typeof(MainLayout)" />
@@ -9,7 +12,7 @@
     </Found>
     <NotFound>
         <LayoutView Layout="@typeof(MainLayout)">
-            <MudText Typo="Typo.body1">Not found.</MudText>
+            <NotFoundNotice />
         </LayoutView>
     </NotFound>
 </Router>

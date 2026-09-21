@@ -1,0 +1,20 @@
+/*
+  Layout CSS, kept out of tokens.css deliberately: that file is DESIGN.md's token delta and
+  ThemeAndTokenTests pins all forty of its values, so nothing that is not a design token belongs
+  in it.
+
+  UX-DR18 — the global progress bar. MudProgressLinear is stock; only its position is set here,
+  which is placement rather than restyling. It sits at the top of the viewport on the login
+  screen and directly under the app bar once there is one.
+*/
+.al-progress {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    z-index: var(--mud-zindex-appbar, 1100);
+}
+
+.al-progress--under-app-bar {
+    top: var(--mud-appbar-height, 64px);
+}

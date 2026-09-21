@@ -1,4 +1,7 @@
 using ActionLedger.Web.Core.Api;
+using ActionLedger.Web.Core.Auth;
+using ActionLedger.Web.Core.Shell;
+using ActionLedger.Web.Core.Users;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -34,9 +37,31 @@ public static class ApiClientRegistration
             ? configured
             : hostBaseAddress;
 
-        services.AddScoped(_ => new HttpClient { BaseAddress = new Uri(baseAddress) });
+        // AD-14's two cross-feature state services, plus the shell's one loading signal. Scoped is
+        // effectively singleton in a WebAssembly host, so the handler, the layout, and every page
+        // share one instance of each.
+        services.AddScoped<SessionState>();
+        services.AddScoped<LoadingState>();
+        services.AddScoped<SessionMessageHandler>();
+
+        // Chained by hand rather than with AddHttpClient: Microsoft.Extensions.Http is not a
+        // pinned package and NFR9 keeps the list short. In Blazor WebAssembly HttpClientHandler
+        // resolves to the browser's fetch handler, so this is the supported shape.
+        services.AddScoped(provider =>
+        {
+            SessionMessageHandler handler = provider.GetRequiredService<SessionMessageHandler>();
+            handler.InnerHandler = new HttpClientHandler();
+
+            // disposeHandler: false — the container owns the scoped SessionMessageHandler and
+            // disposes it itself. Left at the default, the HttpClient would claim it too, and
+            // whichever disposed first would leave the other holding a disposed handler.
+            return new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri(baseAddress) };
+        });
+
         services.AddScoped<IActionLedgerApiClient>(
             provider => new ActionLedgerApiClient(provider.GetRequiredService<HttpClient>()));
+
+        services.AddScoped<UserDirectory>();
 
         return services;
     }

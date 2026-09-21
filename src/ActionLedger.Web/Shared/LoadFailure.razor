@@ -1,0 +1,22 @@
+@* UX-DR19 — the load-failure notice: "Couldn't load. {problem title}" and a Retry button.
+   Presentational, so the one place that sentence is assembled is here and Epic 2's first list
+   inherits it rather than re-typing it — apostrophe included, which is U+2019. *@
+<MudText Typo="Typo.body1" GutterBottom="true">@(Voice.LoadFailurePrefix + Title)</MudText>
+
+@* A stable id rather than leaving callers to reach the button through MudBlazor's own
+   variant class, which would retarget silently the day the Variant changes. *@
+<MudButton id="@RetryId" Variant="Variant.Outlined" Color="Color.Primary" OnClick="OnRetry">@Voice.Retry</MudButton>
+
+@code {
+    /// <summary>The Retry button's id. One notice is on screen at a time, so it is unique.</summary>
+    public const string RetryId = "load-failure-retry";
+
+    /// <summary>The server's problem title. One fixed sentence per status (AD-13).</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Raised once per press. What to re-run is the caller's business.</summary>
+    [Parameter]
+    public EventCallback OnRetry { get; set; }
+}

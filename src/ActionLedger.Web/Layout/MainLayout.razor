@@ -1,8 +1,8 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @using ActionLedger.Web.Core.Theme
 
-@* MudBlazor's four providers, the app's own theme, and the content container.
-   The app bar, the two destinations, and the user menu are Story 1.6.
+@* MudBlazor's four providers, the app's own theme, the shell, and the content container.
 
    ObserveSystemDarkModeChange is how dark mode is reached: MudThemeProvider swaps the values of
    its own --mud-palette-* properties when IsDarkMode flips and adds no class to the document, so
@@ -11,15 +11,67 @@
 
    MaxWidth.Large and Gutters are stock MudBlazor and are exactly DESIGN.md's content-max (1280px)
    and page-gutter (24px), so nothing is restyled to reach them. *@
+
+@inject SessionState Session
+@inject LoadingState Loading
+@inject UserDirectory Directory
+@inject NavigationManager Navigation
+
 <MudThemeProvider Theme="@ActionLedgerTheme.Instance" ObserveSystemDarkModeChange="true" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
 
 <MudLayout>
+    @* The toolbar exists only for a signed-in session: the login screen has no nav and no user
+       menu, because there is nothing yet to navigate as. *@
+    @if (Session.IsSignedIn)
+    {
+        <Toolbar DisplayName="@Session.DisplayName" Role="@Session.Role" OnSignOut="SignOutAsync" />
+    }
+
+    @* UX-DR18 — one linear bar for every in-flight request, and no skeleton rows. It sits under
+       the app bar when there is one and at the top of the viewport when there is not. *@
+    @if (Loading.IsBusy)
+    {
+        <MudProgressLinear Indeterminate="true"
+                           Color="Color.Primary"
+                           Class="@(Session.IsSignedIn ? "al-progress al-progress--under-app-bar" : "al-progress")" />
+    }
+
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.Large" Gutters="true">
             @Body
         </MudContainer>
     </MudMainContent>
 </MudLayout>
+
+@code {
+    /// <summary>Where signing out lands. The same route the handler uses for an expired session.</summary>
+    private const string LoginRoute = "/login";
+
+    protected override void OnInitialized()
+    {
+        // Two scoped services, one instance each in a WebAssembly host, so this is the whole
+        // subscription: the shell re-renders when the session changes or a request starts or ends.
+        Session.Changed += OnStateChanged;
+        Loading.Changed += OnStateChanged;
+    }
+
+    public void Dispose()
+    {
+        Session.Changed -= OnStateChanged;
+        Loading.Changed -= OnStateChanged;
+    }
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private Task SignOutAsync()
+    {
+        Session.SignOut();
+        Directory.Clear();
+        Navigation.NavigateTo(LoginRoute);
+
+        return Task.CompletedTask;
+    }
+}

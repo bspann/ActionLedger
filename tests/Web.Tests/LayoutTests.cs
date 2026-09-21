@@ -1,4 +1,8 @@
+using ActionLedger.Web.Core.Api;
+using ActionLedger.Web.Core.Auth;
+using ActionLedger.Web.Core.Shell;
 using ActionLedger.Web.Core.Theme;
+using ActionLedger.Web.Core.Users;
 using ActionLedger.Web.Layout;
 using Bunit;
 using Microsoft.AspNetCore.Components;
@@ -23,6 +27,14 @@ public sealed class LayoutTests : BunitContext
     public LayoutTests()
     {
         Services.AddMudServices();
+
+        // The shell injects both cross-feature state services and the roster. None of them is
+        // what these five assertions are about — they are here so the layout can be rendered at
+        // all — and every one of them is exercised on its own in ShellTests.
+        Services.AddSingleton<IActionLedgerApiClient>(new StubApiClient());
+        Services.AddSingleton(new SessionState());
+        Services.AddSingleton(new LoadingState());
+        Services.AddSingleton<UserDirectory>();
 
         // MudBlazor's providers call into JS as they mount; none of that is what is under test.
         JSInterop.Mode = JSRuntimeMode.Loose;
