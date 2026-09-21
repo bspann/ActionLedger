@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ActionLedger.Architecture.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="NetArchTest.eNhancedEdition" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ActionLedger.Domain/ActionLedger.Domain.csproj" />
+    <ProjectReference Include="../../src/ActionLedger.Application/ActionLedger.Application.csproj" />
+    <ProjectReference Include="../../src/ActionLedger.Infrastructure/ActionLedger.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/ActionLedger.Api/ActionLedger.Api.csproj" />
+  </ItemGroup>
+</Project>
