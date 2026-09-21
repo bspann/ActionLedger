@@ -96,6 +96,10 @@ Greenfield — nothing to reuse, nothing to avoid breaking. Authoritative source
 
 **The story is on a `chore/` branch, not on `main`.** `main` holds one bootstrap commit (`.gitignore` plus the planning artifacts); everything else is on `chore/1-1-green-pipeline`. That gives the landing step a real pull request with real content and real checks, per the Branching convention, rather than a pull request with nothing in it. If the orchestrator would rather have it all on `main`, it is a fast-forward merge.
 
+**The Microsoft.Testing.Platform packages are pinned even though nothing references them directly.** `xunit.v3` 4.0.1 asks for `Microsoft.Testing.Platform >= 2.4.0`, not an exact version, and 2.4.1 is already published. `dotnet test` on the .NET 10 SDK drives the test application over MTP, and a host/platform mismatch there surfaces as a run reporting *zero tests* rather than as a restore error — a failure that looks like a broken test project but is really package drift. `Directory.Packages.props` pins the four MTP packages at 2.4.0 under central transitive pinning; the pin was verified to bind by moving it to 2.4.1 and watching restore follow.
+
+**`dotnet test` mode is chosen by `global.json` discovery, which is cwd-sensitive.** Run from inside the repository, `dotnet test` uses MTP and passes. Run from outside it (`cd ~ && dotnet test /path/to/ActionLedger.sln`), `global.json` is never found, `dotnet test` falls back to VSTest, and the run fails loudly with `Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on .NET 10 SDK and later`. `ci.yml` runs from the checkout root, so CI always gets MTP. Worth knowing before debugging a local run that behaves differently from CI.
+
 **The BMAD skill mirrors are git-ignored.** `.agents/` and `.claude/skills/` are two identical 13 MB installer-generated copies of the skill library, and `_bmad/config.user.toml` holds per-person install answers. `_bmad/` config, `_bmad-output/` artifacts, and `docs/` are tracked — the board script reads `epics.md` from `_bmad-output/` at landing time.
 
 ## Spec Change Log
@@ -130,6 +134,7 @@ Greenfield — nothing to reuse, nothing to avoid breaking. Authoritative source
 | `dotnet test ActionLedger.sln` | all seven test projects pass | Passed — 7 projects, 19 tests, 0 failed |
 | `dotnet test tests/Architecture.Tests` | every AD-1 rule reports zero violations | 13 tests, 0 failed |
 | clean clone, `dotnet build` then `dotnet test` | both succeed | verified in a fresh `git clone` of the branch |
+| wipe every `bin`/`obj`, then `dotnet restore` + `dotnet build` + `dotnet test ActionLedger.sln` | all seven pass | Passed — total 19, failed 0, exit code 0 |
 
 **The AD-1 rules were verified red, then reverted.** Each violation was introduced, observed to fail, and removed:
 
