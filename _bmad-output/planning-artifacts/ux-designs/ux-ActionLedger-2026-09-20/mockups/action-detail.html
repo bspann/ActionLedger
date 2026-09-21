@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ActionLedger mock: Action Detail</title>
+<style>
+/*
+  KEY SCREEN MOCK: Action Detail at 1280px for the edited action from UJ-4.
+  Fictional content: "Arrange surplus furniture pickup with the recycler", Office move planning,
+  Pinecrest Regional Office. Dana Whitfield is signed in and viewing.
+
+  Spine sections this mock illustrates:
+    EXPERIENCE.md > Information Architecture: Action Detail row
+    EXPERIENCE.md > Provenance Language: Action Detail header, Audit Trail rows
+    EXPERIENCE.md > Component Patterns: Toolbar, Status control (open, Cancelled disabled "Lead only"
+      because the viewer is an Action Officer), Edit fields, Audit Trail timeline (AI entry shows all
+      five proposed fields)
+    EXPERIENCE.md > State Patterns: Overdue (not shown; due date is in the future),
+      Terminal status (not shown; status is Open so controls are enabled)
+    EXPERIENCE.md > Interaction Primitives: status select applies on selection with Undo snackbar;
+      edits apply on Save
+    EXPERIENCE.md > Key Flows: UJ-4 steps 2 and 3 (climax)
+    DESIGN.md > Components: Audit entry (AI and human), Provenance chip, Low Confidence badge,
+      Review State chip (Edited), Status chip
+    DESIGN.md > Typography: confidence-score (mono), source-excerpt
+    DESIGN.md > Colors: ai-provenance for the first entry, human-provenance for every later entry
+
+  Theme values approximate Angular Material 3 prebuilt azure-blue (light).
+  surface-container-highest for filled form fields is approximated as #E2E2E6.
+  Material icons are inline SVG so the file renders offline.
+*/
+:root {
+  --primary:#005CBB; --on-primary:#FFFFFF; --primary-container:#D7E3FF; --on-primary-container:#001B3F;
+  --error-container:#FFDAD6; --on-error-container:#410002;
+  --surface:#FAF9FD; --surface-container-low:#F4F3F7; --surface-container-highest:#E2E2E6;
+  --on-surface:#1A1B1F; --on-surface-variant:#44474E; --outline:#74777F; --outline-variant:#C4C6D0;
+  --ai:#5B3E96; --ai-container:#EADDFF; --on-ai-container:#2A0E5C;
+  --human:#1F5F8B; --human-container:#D6EAF8; --on-human-container:#0B2A40;
+  --lowconf:#8A5000; --lowconf-container:#FFF1DC; --on-lowconf-container:#4A2A00;
+  --success:#1B5E20; --success-container:#E3F2E5; --on-success-container:#0D3A11;
+  --neutral-container:#E8EAED; --on-neutral-container:#3C4043;
+  --font: Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Roboto Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body { background:#D9D9DE; font-family:var(--font); color:var(--on-surface); font-size:14px; line-height:20px; padding:32px 0; }
+
+.frame { width:1280px; margin:0 auto; background:var(--surface); border-radius:8px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,.18); }
+.chrome { height:40px; background:#E9E9EC; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom:1px solid #CFCFD4; }
+.chrome .dot { width:12px; height:12px; border-radius:50%; background:#C4C6D0; }
+.chrome .url { flex:1; margin-left:8px; height:26px; background:#FFF; border-radius:13px; border:1px solid #CFCFD4; font-size:12px; line-height:24px; padding:0 12px; color:#44474E; }
+
+.toolbar { height:64px; display:flex; align-items:center; padding:0 24px; gap:8px; background:var(--surface); border-bottom:1px solid var(--outline-variant); }
+.toolbar .brand { font-size:20px; line-height:28px; font-weight:500; color:var(--on-surface); margin-right:24px; text-decoration:none; }
+.toolbar .nav { display:flex; gap:4px; flex:1; }
+.toolbar .nav a { font-size:14px; line-height:20px; font-weight:500; color:var(--primary); text-decoration:none; padding:10px 16px; border-radius:9999px; }
+.toolbar .nav a.active { background:var(--primary-container); color:var(--on-primary-container); }
+.toolbar .user { display:flex; align-items:center; gap:8px; color:var(--on-surface-variant); font-size:14px; line-height:20px; padding:8px 12px; border-radius:9999px; }
+.toolbar .user .role { color:var(--outline); }
+.ico { width:18px; height:18px; fill:currentColor; flex:none; vertical-align:-4px; }
+.ico.sm { width:16px; height:16px; }
+
+.page { max-width:1280px; padding:0 24px 32px; }
+.pagehead { padding:24px 0 8px; }
+.pagehead .crumb { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-bottom:8px; }
+.pagehead .crumb a { color:var(--primary); text-decoration:none; }
+.pagehead h1 { font-size:24px; line-height:32px; font-weight:400; margin:0 0 8px; }
+.provline { display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:14px; line-height:20px; color:var(--on-surface-variant); }
+.provline a { color:var(--primary); text-decoration:none; }
+.provline .sep { color:var(--outline-variant); }
+
+.layout { display:grid; grid-template-columns:1fr 1fr; gap:32px; margin-top:16px; }
+h2 { font-size:16px; line-height:24px; font-weight:500; margin:0 0 12px; }
+.section { margin-bottom:24px; }
+
+/* Fields and buttons */
+.field { background:var(--surface-container-highest); border-radius:4px 4px 0 0; border-bottom:1px solid var(--outline-variant); padding:8px 40px 8px 16px; min-height:56px; position:relative; margin-bottom:16px; }
+.field .label { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.field .value { font-size:16px; line-height:24px; color:var(--on-surface); min-height:24px; }
+.field .arrow { position:absolute; right:12px; top:50%; margin-top:-9px; color:var(--on-surface-variant); }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 24px; border-radius:9999px; font:500 14px/20px var(--font); border:0; cursor:default; }
+.btn.filled { background:var(--primary); color:var(--on-primary); }
+.btn.filled[disabled] { background:rgba(26,27,31,.12); color:rgba(26,27,31,.38); }
+.btn.text { background:transparent; color:var(--primary); padding:0 12px; }
+.btnrow { display:flex; justify-content:flex-end; gap:8px; }
+.statusrow { display:flex; align-items:center; gap:16px; }
+.statusrow .field { flex:1; margin-bottom:0; }
+.cap { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-top:8px; }
+.menu { background:var(--surface); border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.14); padding:8px 0; margin-top:4px; }
+.menu .opt { height:40px; display:flex; align-items:center; gap:12px; padding:0 16px; font-size:14px; }
+.menu .opt.disabled { color:rgba(26,27,31,.38); }
+.menu .opt .capt { font-size:12px; line-height:16px; color:rgba(26,27,31,.38); }
+
+/* Chips and badges */
+.chip { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:9999px; font-size:13px; line-height:20px; font-weight:500; white-space:nowrap; }
+.chip.ai { background:var(--ai-container); color:var(--on-ai-container); }
+.chip.human { background:var(--human-container); color:var(--on-human-container); }
+.chip.edited { background:var(--success-container); color:var(--on-success-container); }
+.chip.open { background:var(--neutral-container); color:var(--on-neutral-container); }
+.badge.lowconf { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:9999px; background:var(--lowconf-container); color:var(--on-lowconf-container); font-size:13px; font-weight:500; }
+.score { font:500 13px/1.2 var(--mono); color:var(--on-surface); }
+.score .lbl { font:400 12px/16px var(--font); color:var(--on-surface-variant); margin-right:6px; }
+blockquote.excerpt { margin:8px 0 0; background:var(--ai-container); color:var(--on-surface); font:400 14px/1.5 var(--font); padding:10px 16px; border-radius:8px; }
+
+/* Audit Trail timeline, oldest first, never collapsed */
+.timeline { position:relative; padding-left:32px; }
+.timeline::before { content:""; position:absolute; left:9px; top:8px; bottom:8px; width:2px; background:var(--outline-variant); }
+.entry { position:relative; border-radius:12px; padding:16px 20px; margin-bottom:16px; }
+.entry::before { content:""; position:absolute; left:-30px; top:18px; width:16px; height:16px; border-radius:50%; border:2px solid var(--surface); }
+.entry.ai { background:var(--ai-container); }
+.entry.ai::before { background:var(--ai); }
+.entry.human { background:var(--surface-container-low); }
+.entry.human::before { background:var(--human); }
+.entry .ehead { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
+.entry .kind { font-size:16px; line-height:24px; font-weight:500; }
+.entry.ai .kind { color:var(--on-ai-container); }
+.entry .ts { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-left:auto; }
+.entry .actor { font-size:14px; line-height:20px; }
+.entry .kv { font-size:14px; line-height:20px; margin-top:6px; }
+.entry .kv b { font-weight:500; }
+.entry.ai blockquote.excerpt { background:var(--surface); }
+.entry .exlabel { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-top:10px; }
+.wasnow { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px; }
+.wasnow .cell { background:var(--surface); border:1px solid var(--outline-variant); border-radius:8px; padding:8px 12px; }
+.wasnow .cell .l { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.wasnow .cell .v { font-size:14px; line-height:20px; }
+
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <div class="url">localhost:4200/actions/4</div></div>
+
+  <header class="toolbar">
+    <a class="brand" href="#">ActionLedger</a>
+    <nav class="nav">
+      <a href="#">Meetings</a>
+      <a class="active" href="#">Actions</a>
+    </nav>
+    <div class="user"><svg class="ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Dana Whitfield <span class="role">· Action Officer</span><svg class="ico" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+  </header>
+
+  <main class="page">
+    <div class="pagehead">
+      <div class="crumb"><a href="#">Actions</a> · <a href="#">Office move planning</a></div>
+      <h1>Arrange surplus furniture pickup with the recycler</h1>
+      <div class="provline">
+        <span>Created from AI proposal, run <a href="#">extract-actions.v1</a></span>
+        <span class="sep">|</span>
+        <span class="chip open">Open</span>
+        <span class="sep">|</span>
+        <span>Owner Priya Ramaswamy</span>
+        <span class="sep">|</span>
+        <span>Due date 2026-10-03</span>
+        <span class="sep">|</span>
+        <span>Last changed by Dana Whitfield · 2026-09-08 14:12 UTC</span>
+      </div>
+    </div>
+
+    <div class="layout">
+      <!-- Left column: fields and status control -->
+      <div>
+        <section class="section" aria-label="Status">
+          <h2>Status</h2>
+          <div class="statusrow">
+            <div class="field"><div class="label">Status</div><div class="value">Open</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+          </div>
+          <div class="menu" role="listbox" aria-label="Status">
+            <div class="opt">In Progress</div>
+            <div class="opt">Complete</div>
+            <div class="opt disabled" aria-disabled="true">Cancelled <span class="capt">Lead only</span></div>
+          </div>
+        </section>
+
+        <section class="section" aria-label="Fields">
+          <h2>Fields</h2>
+          <div class="field"><div class="label">Description</div><div class="value">Arrange surplus furniture pickup with the recycler</div></div>
+          <div class="row2">
+            <div class="field"><div class="label">Owner</div><div class="value">Priya Ramaswamy</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+            <div class="field"><div class="label">Due date</div><div class="value">2026-10-03</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg></div>
+          </div>
+          <div class="btnrow">
+            <button class="btn text">Cancel</button>
+            <button class="btn filled" disabled>Save</button>
+          </div>
+        </section>
+
+        <section class="section" aria-label="Meeting">
+          <h2>Meeting</h2>
+          <div class="kv"><a href="#" style="color:var(--primary);text-decoration:none">Office move planning</a> · 2026-09-08 · Run 2026-09-08 13:47 UTC · Fake Provider · extract-actions.v1</div>
+        </section>
+      </div>
+
+      <!-- Right column: Audit Trail -->
+      <section aria-label="Audit Trail">
+        <h2>Audit Trail</h2>
+        <div class="timeline">
+
+          <!-- Entry 1: AI Proposal -->
+          <article class="entry ai">
+            <div class="ehead">
+              <span class="kind">AI Proposal</span>
+              <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+              <span class="ts">2026-09-08 13:47 UTC</span>
+            </div>
+            <div class="ehead" style="margin-bottom:4px">
+              <span class="score"><span class="lbl">Confidence</span>0.55</span>
+              <span class="badge lowconf"><svg class="ico sm" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>Low confidence</span>
+            </div>
+            <div class="kv">Actor <b>AI</b> · Fake Provider · extract-actions.v1</div>
+            <div class="kv">Description: <b>Arrange surplus furniture pickup with the recycler</b></div>
+            <div class="kv">Suggested owner: <b>P. Ram</b></div>
+            <div class="kv">Suggested due date: <b>2026-10-10</b></div>
+            <div class="exlabel">Source Excerpt</div>
+            <blockquote class="excerpt">P. Ram to arrange the surplus furniture pickup with the recycler; target the 10th of October.</blockquote>
+          </article>
+
+          <!-- Entry 2: Review Decision, Edited -->
+          <article class="entry human">
+            <div class="ehead">
+              <span class="kind">Review Decision</span>
+              <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Decided by Dana Whitfield</span>
+              <span class="chip edited"><svg class="ico sm" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Edited</span>
+              <span class="ts">2026-09-08 14:12 UTC</span>
+            </div>
+          </article>
+
+          <!-- Entry 3: Field Edit, Owner -->
+          <article class="entry human">
+            <div class="ehead">
+              <span class="kind">Field Edit · Owner</span>
+              <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Edited by Dana Whitfield</span>
+              <span class="ts">2026-09-08 14:12 UTC</span>
+            </div>
+            <div class="wasnow">
+              <div class="cell was"><div class="l">Was</div><div class="v">P. Ram</div></div>
+              <div class="cell"><div class="l">Now</div><div class="v">Priya Ramaswamy</div></div>
+            </div>
+          </article>
+
+          <!-- Entry 4: Field Edit, Due date -->
+          <article class="entry human">
+            <div class="ehead">
+              <span class="kind">Field Edit · Due date</span>
+              <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Edited by Dana Whitfield</span>
+              <span class="ts">2026-09-08 14:12 UTC</span>
+            </div>
+            <div class="wasnow">
+              <div class="cell was"><div class="l">Was</div><div class="v">2026-10-10</div></div>
+              <div class="cell"><div class="l">Now</div><div class="v">2026-10-03</div></div>
+            </div>
+          </article>
+
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

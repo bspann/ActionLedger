@@ -1,0 +1,92 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 09-20-2026 12:20
+last_updated: '09-20-2026 21:18'
+project: ActionLedger
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: in-progress
+  1-1-green-pipeline-on-an-empty-clean-architecture-solution: in-progress
+  1-2-api-foundation-with-versioned-routes-problemdetails-and-the: backlog
+  1-3-database-first-migration-migration-bundle-and-seeded-users: backlog
+  1-4-sign-in-and-receive-a-jwt-list-users: backlog
+  1-5-angular-scaffold-with-material-theme-tokens-and-the-generate: backlog
+  1-6-login-screen-session-shell-and-global-state-patterns: backlog
+  1-7-one-command-compose-environment-with-migrate-api-and-web: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-meeting-and-immutable-notes-api: backlog
+  2-2-meeting-list-new-meeting-dialog-and-notes-paste-area: backlog
+  2-3-fixture-catalog-and-prompt-v1-saturday-evening: backlog
+  2-4-extraction-seam-output-validation-and-the-fake-provider: backlog
+  2-5-extraction-run-and-proposals-persisted-with-ai-proposal-revi: backlog
+  2-6-run-extraction-from-meeting-detail-and-inspect-run-detail: backlog
+  2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-decision-domain-model-with-ordered-revisions-and-the-tracked: backlog
+  3-2-decision-endpoint-with-owner-resolution-and-concurrency-safe: backlog
+  3-3-transactional-outbox-row-on-every-approval: backlog
+  3-4-review-screen-layout-with-proposal-cards-and-source-highligh: backlog
+  3-5-make-decisions-on-the-review-screen: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-action-status-transitions-and-field-edits-api: backlog
+  4-2-filterable-tracked-action-list-api-with-overdue-computed-onc: backlog
+  4-3-action-list-with-filters-in-the-url-and-the-overdue-indicato: backlog
+  4-4-action-detail-with-the-audit-trail: backlog
+  4-5-status-control-and-inline-edit-on-action-detail-first-p0-cut: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-outbox-dispatcher-with-hmac-signing-leasing-and-retry: backlog
+  5-2-read-endpoints-webhook-docs-and-the-demo-receiver-in-compose: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-seeded-demo-meetings-from-the-fixture-catalog: backlog
+  6-2-evaluation-gate-scorer-and-thresholds: backlog
+  6-3-eval-yml-and-the-committed-lm-studio-baseline: backlog
+  6-4-playwright-smoke-test-of-the-happy-path: backlog
+  6-5-continuous-deployment-to-azure-container-apps-with-a-documen: backlog
+  6-6-demo-md-documentation-deliverables-release-notes-and-the-v1: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-re-run-extraction-with-a-different-prompt-version-and-compar: backlog
+  7-2-dashboard-tiles-for-open-overdue-and-completed-this-week: backlog
+  7-3-ai-drafted-follow-up-email-reviewed-before-export: backlog
+  epic-7-retrospective: optional

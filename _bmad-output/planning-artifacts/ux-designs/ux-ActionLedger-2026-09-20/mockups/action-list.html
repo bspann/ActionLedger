@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ActionLedger mock: Action List</title>
+<style>
+/*
+  KEY SCREEN MOCK: Action List at 1280px, filter bar plus Material table at density -1.
+  Fictional content: Pinecrest Regional Office tracked actions across three meetings.
+  Moment shown: Marcus Bell (Lead) has set a Due date range filter; the URL carries it,
+  so "Clear filters" is visible. Eight rows, sorted by Due date ascending.
+
+  Spine sections this mock illustrates:
+    EXPERIENCE.md > Information Architecture: Action List row
+    EXPERIENCE.md > Provenance Language: Action List row (no AI provenance; Owner column only)
+    EXPERIENCE.md > Component Patterns: Toolbar, Action table, Filter bar (Owner select open to show
+      "Unassigned"; Meeting select between Due date range and Overdue only)
+    EXPERIENCE.md > State Patterns: Overdue (two rows; never on Complete or Cancelled)
+    EXPERIENCE.md > Interaction Primitives: filters apply immediately and live in the URL;
+      row click opens detail
+    EXPERIENCE.md > Key Flows: UJ-2 steps 2 and 3
+    DESIGN.md > Components: Overdue badge, Status chip (Open, In Progress, Complete, Cancelled)
+    DESIGN.md > Layout & Spacing: density -1 tables; content-max 1280; page-gutter 24
+    DESIGN.md > Colors: neutral container for Open and Cancelled; primary container for
+      In Progress; success container for Complete; error container for Overdue
+
+  Theme values approximate Angular Material 3 prebuilt azure-blue (light).
+  surface-container-highest for filled form fields is approximated as #E2E2E6.
+  Material icons are inline SVG so the file renders offline.
+*/
+:root {
+  --primary:#005CBB; --on-primary:#FFFFFF; --primary-container:#D7E3FF; --on-primary-container:#001B3F;
+  --error-container:#FFDAD6; --on-error-container:#410002;
+  --surface:#FAF9FD; --surface-container-low:#F4F3F7; --surface-container-highest:#E2E2E6;
+  --on-surface:#1A1B1F; --on-surface-variant:#44474E; --outline:#74777F; --outline-variant:#C4C6D0;
+  --ai:#5B3E96; --ai-container:#EADDFF; --on-ai-container:#2A0E5C;
+  --human:#1F5F8B; --human-container:#D6EAF8; --on-human-container:#0B2A40;
+  --lowconf:#8A5000; --lowconf-container:#FFF1DC; --on-lowconf-container:#4A2A00;
+  --success:#1B5E20; --success-container:#E3F2E5; --on-success-container:#0D3A11;
+  --neutral-container:#E8EAED; --on-neutral-container:#3C4043;
+  --font: Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Roboto Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body { background:#D9D9DE; font-family:var(--font); color:var(--on-surface); font-size:14px; line-height:20px; padding:32px 0; }
+
+.frame { width:1280px; margin:0 auto; background:var(--surface); border-radius:8px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,.18); }
+.chrome { height:40px; background:#E9E9EC; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom:1px solid #CFCFD4; }
+.chrome .dot { width:12px; height:12px; border-radius:50%; background:#C4C6D0; }
+.chrome .url { flex:1; margin-left:8px; height:26px; background:#FFF; border-radius:13px; border:1px solid #CFCFD4; font-size:12px; line-height:24px; padding:0 12px; color:#44474E; }
+
+.toolbar { height:64px; display:flex; align-items:center; padding:0 24px; gap:8px; background:var(--surface); border-bottom:1px solid var(--outline-variant); }
+.toolbar .brand { font-size:20px; line-height:28px; font-weight:500; color:var(--on-surface); margin-right:24px; text-decoration:none; }
+.toolbar .nav { display:flex; gap:4px; flex:1; }
+.toolbar .nav a { font-size:14px; line-height:20px; font-weight:500; color:var(--primary); text-decoration:none; padding:10px 16px; border-radius:9999px; }
+.toolbar .nav a.active { background:var(--primary-container); color:var(--on-primary-container); }
+.toolbar .user { display:flex; align-items:center; gap:8px; color:var(--on-surface-variant); font-size:14px; line-height:20px; padding:8px 12px; border-radius:9999px; }
+.toolbar .user .role { color:var(--outline); }
+.ico { width:18px; height:18px; fill:currentColor; flex:none; vertical-align:-4px; }
+.ico.sm { width:16px; height:16px; }
+
+.page { max-width:1280px; padding:0 24px 24px; }
+.pagehead { display:flex; align-items:flex-end; justify-content:space-between; padding:24px 0 16px; gap:16px; }
+.pagehead h1 { font-size:24px; line-height:32px; font-weight:400; margin:0; }
+.pagehead .meta { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-top:4px; }
+
+/* Filter bar */
+.filters { display:flex; align-items:flex-start; gap:16px; padding:0 0 16px; flex-wrap:wrap; }
+.field { background:var(--surface-container-highest); border-radius:4px 4px 0 0; border-bottom:1px solid var(--outline-variant); padding:8px 40px 8px 16px; min-height:56px; position:relative; min-width:200px; }
+.field.wide { min-width:300px; }
+.field .label { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.field .value { font-size:16px; line-height:24px; color:var(--on-surface); min-height:24px; }
+.field .value.placeholder { color:var(--on-surface-variant); }
+.field .arrow { position:absolute; right:12px; top:50%; margin-top:-9px; color:var(--on-surface-variant); }
+.toggle { display:flex; align-items:center; gap:12px; height:56px; padding:0 8px; }
+.switch { width:52px; height:32px; border-radius:16px; border:2px solid var(--outline); background:var(--surface-container-highest); position:relative; }
+.switch::after { content:""; position:absolute; left:6px; top:6px; width:16px; height:16px; border-radius:50%; background:var(--outline); }
+.btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 24px; border-radius:9999px; font:500 14px/20px var(--font); border:0; cursor:default; }
+.btn.text { background:transparent; color:var(--primary); padding:0 12px; }
+.filters .clear { margin-left:auto; align-self:center; }
+.menu { background:var(--surface); border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.14); padding:8px 0; margin-top:4px; }
+.menu .opt { height:40px; display:flex; align-items:center; padding:0 16px; font-size:14px; }
+.menu .opt.selected { background:var(--primary-container); color:var(--on-primary-container); }
+
+/* Table, density -1 (row 44px, header 48px) */
+table { width:100%; border-collapse:collapse; background:var(--surface); }
+thead th { height:48px; text-align:left; font-size:12px; line-height:16px; font-weight:500; color:var(--on-surface-variant); padding:0 16px; border-bottom:1px solid var(--outline-variant); white-space:nowrap; }
+thead th .sort { display:inline-flex; align-items:center; gap:4px; }
+thead th.sorted { color:var(--on-surface); }
+tbody td { height:44px; padding:0 16px; border-bottom:1px solid var(--outline-variant); font-size:14px; line-height:20px; white-space:nowrap; }
+tbody td.desc { white-space:normal; max-width:420px; }
+tbody tr { cursor:default; }
+tbody tr.focused td { background:rgba(0,92,187,.08); }
+td.num, th.num { font-variant-numeric: tabular-nums; }
+.muted { color:var(--on-surface-variant); }
+
+/* Chips and badges */
+.chip { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:9999px; font-size:12px; line-height:16px; font-weight:500; white-space:nowrap; }
+.chip.open { background:var(--neutral-container); color:var(--on-neutral-container); }
+.chip.inprogress { background:var(--primary-container); color:var(--on-primary-container); }
+.chip.complete { background:var(--success-container); color:var(--on-success-container); }
+.chip.cancelled { background:var(--neutral-container); color:var(--on-neutral-container); text-decoration:line-through; }
+.badge.overdue { display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 10px; border-radius:9999px; background:var(--error-container); color:var(--on-error-container); font-size:12px; line-height:16px; font-weight:500; white-space:nowrap; }
+
+/* Paginator */
+.paginator { display:flex; align-items:center; justify-content:flex-end; gap:24px; height:56px; padding:0 8px; font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.paginator .pp { display:flex; align-items:center; gap:8px; }
+.paginator .pp .sel { display:inline-flex; align-items:center; gap:4px; border-bottom:1px solid var(--outline-variant); padding:4px 0 2px 8px; color:var(--on-surface); }
+.paginator .arrows { display:flex; gap:4px; }
+.paginator .arrows span { width:40px; height:40px; display:inline-flex; align-items:center; justify-content:center; border-radius:50%; color:var(--outline-variant); }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <div class="url">localhost:4200/actions?dueFrom=2026-09-01&amp;dueTo=2026-10-31&amp;sort=dueDate,asc</div></div>
+
+  <header class="toolbar">
+    <a class="brand" href="#">ActionLedger</a>
+    <nav class="nav">
+      <a href="#">Meetings</a>
+      <a class="active" href="#">Actions</a>
+    </nav>
+    <div class="user"><svg class="ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Marcus Bell <span class="role">· Lead</span><svg class="ico" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+  </header>
+
+  <main class="page">
+    <div class="pagehead">
+      <div>
+        <h1>Actions</h1>
+        <div class="meta">Tracked Actions across all Meetings. Row click opens Action Detail.</div>
+      </div>
+    </div>
+
+    <!-- Filter bar -->
+    <section class="filters" aria-label="Filters">
+      <div>
+        <div class="field"><div class="label">Owner</div><div class="value placeholder">All</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+        <div class="menu" role="listbox" aria-label="Owner">
+          <div class="opt selected">All</div>
+          <div class="opt">Unassigned</div>
+          <div class="opt">Dana Whitfield</div>
+          <div class="opt">Marcus Bell</div>
+          <div class="opt">Priya Ramaswamy</div>
+        </div>
+      </div>
+      <div class="field"><div class="label">Status</div><div class="value placeholder">All</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+      <div class="field wide"><div class="label">Due date range</div><div class="value">2026-09-01 &nbsp;–&nbsp; 2026-10-31</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg></div>
+      <div class="field"><div class="label">Meeting</div><div class="value placeholder">All</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+      <div class="toggle"><span class="switch" role="switch" aria-checked="false" aria-label="Overdue only"></span><span>Overdue only</span></div>
+      <button class="btn text clear">Clear filters</button>
+    </section>
+
+    <!-- Action table -->
+    <table aria-label="Tracked Actions">
+      <thead>
+        <tr>
+          <th>Description</th>
+          <th>Owner</th>
+          <th class="sorted" aria-sort="ascending"><span class="sort">Due date <svg class="ico sm" viewBox="0 0 24 24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg></span></th>
+          <th><span class="sort">Status</span></th>
+          <th>Meeting</th>
+          <th>Overdue</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="desc">Confirm elevator booking with building management</td>
+          <td>Marcus Bell</td>
+          <td class="num">2026-09-11</td>
+          <td><span class="chip open">Open</span></td>
+          <td>Office move planning</td>
+          <td><span class="badge overdue"><svg class="ico sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>Overdue</span></td>
+        </tr>
+        <tr>
+          <td class="desc">Circulate packing schedule and crate labels to all staff</td>
+          <td>Dana Whitfield</td>
+          <td class="num">2026-09-18</td>
+          <td><span class="chip inprogress">In Progress</span></td>
+          <td>Office move planning</td>
+          <td><span class="badge overdue"><svg class="ico sm" viewBox="0 0 24 24"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>Overdue</span></td>
+        </tr>
+        <tr>
+          <td class="desc">Book the training room and projector for the Q4 training day</td>
+          <td>Priya Ramaswamy</td>
+          <td class="num">2026-09-19</td>
+          <td><span class="chip complete">Complete</span></td>
+          <td>Q4 training event</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td class="desc">Arrange surplus furniture pickup with the recycler</td>
+          <td>Priya Ramaswamy</td>
+          <td class="num">2026-10-03</td>
+          <td><span class="chip open">Open</span></td>
+          <td>Office move planning</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td class="desc">Obtain written network cutover plan from the IT vendor</td>
+          <td>Priya Ramaswamy</td>
+          <td class="num">2026-10-10</td>
+          <td><span class="chip inprogress">In Progress</span></td>
+          <td>Office move planning</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td class="desc">Tag every laptop with an asset label before the inventory count</td>
+          <td>Priya Ramaswamy</td>
+          <td class="num">2026-10-17</td>
+          <td><span class="chip open">Open</span></td>
+          <td>Equipment inventory kickoff</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td class="desc">Order catering for the Q4 training day</td>
+          <td class="muted">Unassigned</td>
+          <td class="num">2026-10-24</td>
+          <td><span class="chip cancelled">Cancelled</span></td>
+          <td>Q4 training event</td>
+          <td></td>
+        </tr>
+        <tr>
+          <td class="desc">Update mailing address on the courier accounts</td>
+          <td class="muted">Unassigned</td>
+          <td class="num">2026-10-31</td>
+          <td><span class="chip open">Open</span></td>
+          <td>Office move planning</td>
+          <td></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- Paginator -->
+    <div class="paginator" aria-label="Pagination">
+      <div class="pp">Items per page: <span class="sel">50 <svg class="ico sm" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></span></div>
+      <div>1 – 8 of 8</div>
+      <div class="arrows">
+        <span aria-label="First page"><svg class="ico" viewBox="0 0 24 24"><path d="M18.41 16.59L13.82 12l4.59-4.59L17 6l-6 6 6 6zM6 6h2v12H6z"/></svg></span>
+        <span aria-label="Previous page"><svg class="ico" viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg></span>
+        <span aria-label="Next page"><svg class="ico" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg></span>
+        <span aria-label="Last page"><svg class="ico" viewBox="0 0 24 24"><path d="M5.59 7.41L10.17 12l-4.58 4.59L7 18l6-6-6-6zM16 6h2v12h-2z"/></svg></span>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

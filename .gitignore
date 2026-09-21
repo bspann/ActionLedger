@@ -1,0 +1,129 @@
+## ActionLedger — VisualStudio / .NET + Node ignores
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+
+# Visual Studio / Rider / VS Code
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.DotSettings.user
+
+# Test results and coverage
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+TestResults/
+
+# NuGet
+*.nupkg
+*.snupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+*.nuget.props
+*.nuget.targets
+project.lock.json
+project.fragment.lock.json
+
+# ASP.NET / EF
+*.mdf
+*.ldf
+*.ndf
+ScaffoldingReadMe.txt
+PublishScripts/
+*.pubxml
+*.pubxml.user
+*.publishproj
+*.azurePubxml
+
+# MSBuild / misc
+*.tlog
+*.ilk
+*.meta
+*.obj
+*.iobj
+*.pch
+*.pdb
+*.ipdb
+*.pgc
+*.pgd
+*.rsp
+*.sbr
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.tmp_proj
+*_wpftmp.csproj
+*.vspscc
+*.vssscc
+.builds
+*.svclog
+*.scc
+
+# Node / Angular
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+.angular/
+dist/
+.npm/
+
+# Generated Angular API client (regenerated from the committed OpenAPI contract)
+web/actionledger-web/src/app/core/api/
+
+# Playwright
+**/playwright-report/
+**/.playwright/
+**/playwright/.cache/
+
+# Local environment and secrets — never commit real values
+.env
+.env.local
+*.local.json
+appsettings.Development.local.json
+secrets.json
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# BMAD agent toolchain — installer-generated and regenerated on every install.
+# The planning and implementation artifacts under _bmad-output/ are tracked; these mirrors
+# of the skill library are not, and _bmad/config.user.toml holds per-person install answers.
+.agents/
+.claude/skills/
+.claude/settings.local.json
+_bmad/config.user.toml
+_bmad/custom/config.user.toml

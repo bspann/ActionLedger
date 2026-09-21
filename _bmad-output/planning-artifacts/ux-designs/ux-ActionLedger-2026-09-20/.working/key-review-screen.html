@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ActionLedger mock: Review Screen</title>
+<style>
+/*
+  KEY SCREEN MOCK: Review Screen at 1280px, two-pane, mid-review.
+  Fictional content: Pinecrest Regional Office, "Office move planning", 2026-09-08.
+
+  Spine sections this mock illustrates:
+    EXPERIENCE.md > Information Architecture: Review Screen row
+    EXPERIENCE.md > Provenance Language: Review Screen Pending card, Review Screen decided card
+    EXPERIENCE.md > Component Patterns: Toolbar, Proposal card, Source Excerpt link, Pending counter
+    EXPERIENCE.md > State Patterns: Low confidence proposal, Unmatched suggested owner
+    EXPERIENCE.md > Responsive & Platform: 1200px and wider (two-pane, independent scroll)
+    EXPERIENCE.md > Key Flows: UJ-1 steps 4, 5, 6, 7 (two approvals, one edit, one reject: two pending)
+    DESIGN.md > Components: Provenance chip, Low Confidence badge, Review State chip,
+      Proposal card, Source Excerpt highlight
+    DESIGN.md > Layout & Spacing: content-max 1280, page-gutter 24, notes-pane-min 360
+    DESIGN.md > Typography: confidence-score (mono), source-excerpt
+
+  Card states shown, top to bottom (every header starts with the "Proposed by AI" chip):
+    1 Approved (decided: human chip, timestamp UTC, Review State chip, "View action")
+    2 Approved (decided)
+    3 Pending in edit mode, focused; text field, owner select open showing "Unassigned",
+      date picker with clear button, Cancel and "Approve with edits"; its Source Excerpt
+      is highlighted in the notes pane
+    4 Pending at rest, Low confidence (amber left border and badge), read-only values,
+      hint "AI suggested: Facilities", Reject / Edit / Approve
+    5 Edited, Low confidence, "Proposed" column beside decided values
+    6 Rejected, "Reason: discussion item, not an action"
+
+  Theme values approximate Angular Material 3 prebuilt azure-blue (light).
+  surface-container-highest for filled form fields is approximated as #E2E2E6.
+  Material icons are inline SVG so the file renders offline.
+*/
+:root {
+  --primary:#005CBB; --on-primary:#FFFFFF; --primary-container:#D7E3FF; --on-primary-container:#001B3F;
+  --error-container:#FFDAD6; --on-error-container:#410002;
+  --surface:#FAF9FD; --surface-container-low:#F4F3F7; --surface-container-highest:#E2E2E6;
+  --on-surface:#1A1B1F; --on-surface-variant:#44474E; --outline:#74777F; --outline-variant:#C4C6D0;
+  --ai:#5B3E96; --ai-container:#EADDFF; --on-ai-container:#2A0E5C;
+  --human:#1F5F8B; --human-container:#D6EAF8; --on-human-container:#0B2A40;
+  --lowconf:#8A5000; --lowconf-container:#FFF1DC; --on-lowconf-container:#4A2A00;
+  --success:#1B5E20; --success-container:#E3F2E5; --on-success-container:#0D3A11;
+  --neutral-container:#E8EAED; --on-neutral-container:#3C4043;
+  --font: Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: "Roboto Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body { background:#D9D9DE; font-family:var(--font); color:var(--on-surface); font-size:14px; line-height:20px; padding:32px 0; }
+
+/* Browser frame */
+.frame { width:1280px; margin:0 auto; background:var(--surface); border-radius:8px; overflow:hidden; box-shadow:0 8px 24px rgba(0,0,0,.18); }
+.chrome { height:40px; background:#E9E9EC; display:flex; align-items:center; gap:8px; padding:0 12px; border-bottom:1px solid #CFCFD4; }
+.chrome .dot { width:12px; height:12px; border-radius:50%; background:#C4C6D0; }
+.chrome .url { flex:1; margin-left:8px; height:26px; background:#FFF; border-radius:13px; border:1px solid #CFCFD4; font-size:12px; line-height:24px; padding:0 12px; color:#44474E; }
+
+/* Toolbar */
+.toolbar { height:64px; display:flex; align-items:center; padding:0 24px; gap:8px; background:var(--surface); border-bottom:1px solid var(--outline-variant); }
+.toolbar .brand { font-size:20px; line-height:28px; font-weight:500; color:var(--on-surface); margin-right:24px; text-decoration:none; }
+.toolbar .nav { display:flex; gap:4px; flex:1; }
+.toolbar .nav a { font-size:14px; line-height:20px; font-weight:500; color:var(--primary); text-decoration:none; padding:10px 16px; border-radius:9999px; }
+.toolbar .nav a.active { background:var(--primary-container); color:var(--on-primary-container); }
+.toolbar .user { display:flex; align-items:center; gap:8px; color:var(--on-surface-variant); font-size:14px; line-height:20px; padding:8px 12px; border-radius:9999px; }
+.toolbar .user .role { color:var(--outline); }
+.ico { width:18px; height:18px; fill:currentColor; flex:none; vertical-align:-4px; }
+.ico.sm { width:16px; height:16px; }
+
+/* Page header */
+.page { max-width:1280px; padding:0 24px; }
+.pagehead { display:flex; align-items:flex-end; justify-content:space-between; padding:24px 0 16px; gap:16px; }
+.pagehead h1 { font-size:24px; line-height:32px; font-weight:400; margin:0; }
+.pagehead .meta { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-top:4px; }
+.pagehead .meta a { color:var(--primary); text-decoration:none; }
+.counter { display:inline-flex; align-items:center; height:32px; padding:0 16px; border-radius:9999px; background:var(--neutral-container); color:var(--on-neutral-container); font-size:14px; font-weight:500; }
+.headactions { display:flex; align-items:center; gap:8px; }
+
+/* Two-pane */
+.panes { display:grid; grid-template-columns:420px 1fr; gap:24px; height:760px; padding-bottom:24px; }
+.pane { overflow:auto; min-width:360px; }
+.notes { background:var(--surface); border:1px solid var(--outline-variant); border-radius:12px; padding:16px 20px; }
+.notes h2 { font-size:16px; line-height:24px; font-weight:500; margin:0 0 4px; }
+.notes .cap { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin-bottom:16px; }
+.notes p { margin:0 0 12px; font-size:14px; line-height:22px; white-space:pre-wrap; }
+mark.excerpt { background:var(--ai-container); color:var(--on-surface); padding:1px 2px; border-radius:2px; box-shadow:0 0 0 2px var(--ai-container); }
+
+/* Buttons (Material 3 shapes) */
+.btn { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 24px; border-radius:9999px; font:500 14px/20px var(--font); border:0; cursor:default; }
+.btn.filled { background:var(--primary); color:var(--on-primary); }
+.btn.outlined { background:transparent; color:var(--primary); border:1px solid var(--outline); }
+.btn.text { background:transparent; color:var(--primary); padding:0 12px; }
+
+/* Chips and badges */
+.chip { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:9999px; font-size:13px; line-height:20px; font-weight:500; white-space:nowrap; }
+.chip.ai { background:var(--ai-container); color:var(--on-ai-container); }
+.chip.human { background:var(--human-container); color:var(--on-human-container); }
+.chip.pending { background:var(--primary-container); color:var(--on-primary-container); }
+.chip.approved, .chip.edited { background:var(--success-container); color:var(--on-success-container); }
+.chip.rejected { background:var(--neutral-container); color:var(--on-neutral-container); }
+.badge.lowconf { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 12px; border-radius:9999px; background:var(--lowconf-container); color:var(--on-lowconf-container); font-size:13px; font-weight:500; }
+.score { font:500 13px/1.2 var(--mono); color:var(--on-surface); padding:0 4px; }
+.score .lbl { font:400 12px/16px var(--font); color:var(--on-surface-variant); margin-right:6px; }
+
+/* Proposal card */
+.card { background:var(--surface-container-low); border-radius:12px; padding:16px 20px 16px 20px; margin-bottom:16px; }
+.card.lowconf { border-left:4px solid var(--lowconf); padding-left:16px; }
+.card.focused { outline:2px solid var(--primary); outline-offset:2px; }
+.card .head { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.card .head .spacer { flex:1; }
+.ro { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:8px; }
+.ro .item .l { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.ro .item .v { font-size:16px; line-height:24px; }
+.ro .item .hint { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.field .clear { position:absolute; right:40px; top:50%; margin-top:-9px; color:var(--on-surface-variant); }
+.menu { background:var(--surface); border-radius:4px; box-shadow:0 2px 6px rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.14); padding:8px 0; margin-top:4px; }
+.menu .opt { height:40px; display:flex; align-items:center; padding:0 16px; font-size:14px; }
+.menu .opt.selected { background:var(--primary-container); color:var(--on-primary-container); }
+.reason { font-size:14px; line-height:20px; margin-top:8px; }
+.field { background:var(--surface-container-highest); border-radius:4px 4px 0 0; border-bottom:1px solid var(--outline-variant); padding:8px 16px 8px; min-height:56px; position:relative; }
+.field .label { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.field .value { font-size:16px; line-height:24px; color:var(--on-surface); min-height:24px; }
+.field .value.empty { color:transparent; }
+.field .arrow { position:absolute; right:12px; top:50%; margin-top:-9px; color:var(--on-surface-variant); }
+.field .hint { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.hintline { font-size:12px; line-height:16px; color:var(--on-surface-variant); padding:4px 16px 0; }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px; }
+.exlabel { font-size:12px; line-height:16px; color:var(--on-surface-variant); margin:16px 0 4px; }
+blockquote.excerpt { margin:0; background:var(--ai-container); color:var(--on-surface); font:400 14px/1.5 var(--font); padding:10px 16px; border-radius:8px; }
+.actions { display:flex; justify-content:flex-end; gap:8px; margin-top:16px; }
+.readonly { font-size:14px; line-height:20px; }
+.readonly .desc { font-size:16px; line-height:24px; margin-bottom:4px; }
+.readonly .kv { color:var(--on-surface-variant); }
+.readonly .kv b { color:var(--on-surface); font-weight:400; }
+.decided { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.decided .ts { font-size:12px; line-height:16px; color:var(--on-surface-variant); }
+.compare { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:12px; }
+.col { border-radius:8px; padding:12px 16px; }
+.col.proposed { background:var(--ai-container); color:var(--on-surface); }
+.col.decidedcol { background:var(--surface); border:1px solid var(--outline-variant); }
+.col .colhead { display:flex; align-items:center; gap:6px; font-size:12px; line-height:16px; font-weight:500; margin-bottom:8px; }
+.col.proposed .colhead { color:var(--on-ai-container); }
+.col.decidedcol .colhead { color:var(--on-human-container); }
+.col dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:4px 12px; font-size:14px; line-height:20px; }
+.col dt { color:var(--on-surface-variant); }
+.col dd { margin:0; }
+</style>
+</head>
+<body>
+<div class="frame">
+  <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+    <div class="url">localhost:4200/meetings/1/runs/1/review</div></div>
+
+  <header class="toolbar">
+    <a class="brand" href="#">ActionLedger</a>
+    <nav class="nav">
+      <a class="active" href="#">Meetings</a>
+      <a href="#">Actions</a>
+    </nav>
+    <div class="user"><svg class="ico" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Dana Whitfield <span class="role">· Action Officer</span><svg class="ico" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+  </header>
+
+  <main class="page">
+    <div class="pagehead">
+      <div>
+        <h1>Review proposals</h1>
+        <div class="meta"><a href="#">Office move planning</a> · 2026-09-08 · Run 2026-09-08 13:47 UTC · Fake Provider · extract-actions.v1</div>
+      </div>
+      <div class="headactions">
+        <span class="counter" aria-live="polite">2 proposals pending</span>
+        <a class="btn text" href="#">Back to meeting</a>
+      </div>
+    </div>
+
+    <div class="panes">
+      <!-- Left pane: Meeting Notes -->
+      <section class="pane notes" aria-label="Meeting Notes">
+        <h2>Meeting Notes</h2>
+        <div class="cap">Saved 2026-09-08 13:41 UTC, immutable</div>
+<p>Office move planning, Pinecrest Regional Office, 2026-09-08.
+Present: Dana Whitfield, Priya Ramaswamy, Marcus Bell.</p>
+<p>Marcus opened with the dates. The second floor lease ends 2026-10-31 and the fourth floor suite is ready from 2026-10-13. Marcus will confirm the elevator booking with building management by Friday the 11th.</p>
+<p>Dana raised the packing schedule. Dana will circulate the packing schedule and crate labels to all staff by the 18th so people have a weekend to sort their desks.</p>
+<p>Priya asked about the network cutover. <mark class="excerpt" id="excerpt-3">Priya will get a written cutover plan from the IT vendor before 2026-10-10 so the phones and printers come up on the first morning.</mark></p>
+<p>Someone from facilities should update the mailing address on the courier accounts once the move date is final. Nobody was sure who owns the courier accounts now.</p>
+<p>P. Ram to arrange the surplus furniture pickup with the recycler; target the 10th of October.</p>
+<p>Long discussion about whether the storage room on the fourth floor should be shared with the finance team. Marcus to decide before the next check-in.</p>
+<p>Next check-in 2026-09-29.</p>
+      </section>
+
+      <!-- Right pane: proposal cards -->
+      <section class="pane" aria-label="Proposed Actions">
+
+        <!-- Card 1: Approved, collapsed -->
+        <article class="card">
+          <div class="head">
+            <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+            <span class="score"><span class="lbl">Confidence</span>0.91</span>
+            <span class="spacer"></span>
+            <span class="chip approved">Approved</span>
+          </div>
+          <div class="readonly">
+            <div class="desc">Confirm elevator booking with building management</div>
+            <div class="kv">Owner <b>Marcus Bell</b> · Due date <b>2026-09-11</b></div>
+          </div>
+          <div class="decided" aria-live="polite">
+            <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Decided by Dana Whitfield</span>
+            <span class="ts">2026-09-08 14:03 UTC</span>
+            <span class="spacer" style="flex:1"></span>
+            <a class="btn text" href="#">View action</a>
+          </div>
+        </article>
+
+        <!-- Card 2: Approved, collapsed -->
+        <article class="card">
+          <div class="head">
+            <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+            <span class="score"><span class="lbl">Confidence</span>0.88</span>
+            <span class="spacer"></span>
+            <span class="chip approved">Approved</span>
+          </div>
+          <div class="readonly">
+            <div class="desc">Circulate packing schedule and crate labels to all staff</div>
+            <div class="kv">Owner <b>Dana Whitfield</b> · Due date <b>2026-09-18</b></div>
+          </div>
+          <div class="decided" aria-live="polite">
+            <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Decided by Dana Whitfield</span>
+            <span class="ts">2026-09-08 14:04 UTC</span>
+            <span class="spacer" style="flex:1"></span>
+            <a class="btn text" href="#">View action</a>
+          </div>
+        </article>
+
+        <!-- Card 3: Pending, edit mode, focused (Source Excerpt highlighted at left). Due date differs from proposed, so the primary reads "Approve with edits" -->
+        <article class="card focused" aria-describedby="excerpt-3">
+          <div class="head">
+            <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+            <span class="score"><span class="lbl">Confidence</span>0.84</span>
+            <span class="spacer"></span>
+            <span class="chip pending">Pending</span>
+          </div>
+          <div class="field"><div class="label">Description</div><div class="value">Obtain written network cutover plan from the IT vendor</div></div>
+          <div class="row2">
+            <div>
+              <div class="field"><div class="label">Owner</div><div class="value">Priya Ramaswamy</div><svg class="ico arrow" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5z"/></svg></div>
+              <div class="hintline">AI suggested: Priya</div>
+              <div class="menu" role="listbox" aria-label="Owner">
+                <div class="opt">Unassigned</div>
+                <div class="opt">Dana Whitfield</div>
+                <div class="opt">Marcus Bell</div>
+                <div class="opt selected">Priya Ramaswamy</div>
+              </div>
+            </div>
+            <div>
+              <div class="field"><div class="label">Due date</div><div class="value">2026-10-08</div><svg class="ico clear" viewBox="0 0 24 24" aria-label="Clear due date"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg><svg class="ico arrow" viewBox="0 0 24 24"><path d="M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 16H5V9h14v11z"/></svg></div>
+              <div class="hintline">AI suggested: 2026-10-10</div>
+            </div>
+          </div>
+          <div class="exlabel">Source Excerpt</div>
+          <blockquote class="excerpt">Priya will get a written cutover plan from the IT vendor before 2026-10-10 so the phones and printers come up on the first morning.</blockquote>
+          <div class="actions">
+            <button class="btn text">Cancel</button>
+            <button class="btn filled">Approve with edits</button>
+          </div>
+        </article>
+
+        <!-- Card 4: Pending at rest, Low confidence, unmatched suggested owner, read-only values -->
+        <article class="card lowconf">
+          <div class="head">
+            <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+            <span class="score"><span class="lbl">Confidence</span>0.48</span>
+            <span class="badge lowconf"><svg class="ico sm" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>Low confidence</span>
+            <span class="spacer"></span>
+            <span class="chip pending">Pending</span>
+          </div>
+          <div class="readonly"><div class="desc">Update mailing address on the courier accounts</div></div>
+          <div class="ro">
+            <div class="item"><div class="l">Owner</div><div class="v">Unassigned</div><div class="hint">AI suggested: Facilities</div></div>
+            <div class="item"><div class="l">Due date</div><div class="v">None</div><div class="hint">AI suggested: none</div></div>
+          </div>
+          <div class="exlabel">Source Excerpt</div>
+          <blockquote class="excerpt">Someone from facilities should update the mailing address on the courier accounts once the move date is final.</blockquote>
+          <div class="actions">
+            <button class="btn text">Reject</button>
+            <button class="btn outlined">Edit</button>
+            <button class="btn filled">Approve</button>
+          </div>
+        </article>
+
+        <!-- Card 5: Edited, Low confidence, Proposed column beside decided values -->
+        <article class="card lowconf">
+          <div class="head">
+            <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+            <span class="score"><span class="lbl">Confidence</span>0.55</span>
+            <span class="badge lowconf"><svg class="ico sm" viewBox="0 0 24 24"><path d="M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z"/></svg>Low confidence</span>
+            <span class="spacer"></span>
+            <span class="chip edited"><svg class="ico sm" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>Edited</span>
+          </div>
+          <div class="readonly">
+            <div class="desc">Arrange surplus furniture pickup with the recycler</div>
+          </div>
+          <div class="compare">
+            <div class="col proposed">
+              <div class="colhead"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed</div>
+              <dl><dt>Owner</dt><dd>P. Ram</dd><dt>Due date</dt><dd>2026-10-10</dd></dl>
+            </div>
+            <div class="col decidedcol">
+              <div class="colhead"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Decided</div>
+              <dl><dt>Owner</dt><dd>Priya Ramaswamy</dd><dt>Due date</dt><dd>2026-10-03</dd></dl>
+            </div>
+          </div>
+          <div class="decided" aria-live="polite">
+            <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Decided by Dana Whitfield</span>
+            <span class="ts">2026-09-08 14:12 UTC</span>
+            <span class="spacer" style="flex:1"></span>
+            <a class="btn text" href="#">View action</a>
+          </div>
+        </article>
+
+        <!-- Card 6: Rejected, reason shown, no "View action" link -->
+        <article class="card">
+          <div class="head">
+            <span class="chip ai"><svg class="ico sm" viewBox="0 0 24 24"><path d="M19 9l1.25-2.75L23 5l-2.75-1.25L19 1l-1.25 2.75L15 5l2.75 1.25L19 9zm-7.5.5L9 4 6.5 9.5 1 12l5.5 2.5L9 20l2.5-5.5L17 12l-5.5-2.5zM19 15l-1.25 2.75L15 19l2.75 1.25L19 23l1.25-2.75L23 19l-2.75-1.25L19 15z"/></svg>Proposed by AI</span>
+            <span class="score"><span class="lbl">Confidence</span>0.66</span>
+            <span class="spacer"></span>
+            <span class="chip rejected">Rejected</span>
+          </div>
+          <div class="readonly">
+            <div class="desc">Decide whether the fourth floor storage room is shared with the finance team</div>
+            <div class="kv">Owner <b>Marcus Bell</b> · Due date <b>None</b></div>
+          </div>
+          <div class="reason">Reason: discussion item, not an action</div>
+          <div class="decided" aria-live="polite">
+            <span class="chip human"><svg class="ico sm" viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>Decided by Dana Whitfield</span>
+            <span class="ts">2026-09-08 14:15 UTC</span>
+          </div>
+        </article>
+
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>
