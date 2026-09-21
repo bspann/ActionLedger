@@ -64,6 +64,22 @@
     <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.12" />
   </ItemGroup>
 
+  <ItemGroup Label="Web (Story 1.5)">
+    <!-- The Blazor WebAssembly host itself; the SDK supplies no implicit version under CPM. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <!-- `dotnet run` on a WASM project needs the dev server to host wwwroot. Build-time only. -->
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" />
+    <!-- The component library the whole UI is built from (AD-14, DESIGN.md). -->
+    <PackageVersion Include="MudBlazor" Version="9.10.0" />
+    <!--
+      Generates the typed client from the committed contract in a pre-build target (AD-13).
+      Build-time only: it ships the generator executable, not a runtime dependency.
+    -->
+    <PackageVersion Include="NSwag.MSBuild" Version="14.7.1" />
+    <!-- bUnit renders components in-process so component tests ride the existing `dotnet test`. -->
+    <PackageVersion Include="bunit" Version="2.11.3" />
+  </ItemGroup>
+
   <ItemGroup Label="Architecture rules">
     <PackageVersion Include="NetArchTest.eNhancedEdition" Version="1.4.5" />
   </ItemGroup>

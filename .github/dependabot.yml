@@ -1,5 +1,6 @@
-# NFR5: update pull requests for the dependency surface. The npm ecosystem is added
-# when the Angular app lands in Story 1.5.
+# NFR5: update pull requests for the dependency surface. NuGet covers all of it: the web app
+# is Blazor WebAssembly, so there is no second package ecosystem to watch (sprint change
+# 2026-09-21).
 version: 2
 
 updates:

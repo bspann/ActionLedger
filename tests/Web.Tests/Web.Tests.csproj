@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ActionLedger.Web.Tests</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <!-- AD-18 — bUnit component tests live here and run under the same `dotnet test` as every
+       other project. The Razor SDK is what lets bUnit render components in-process. -->
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="bunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ActionLedger.Web/ActionLedger.Web.csproj" />
+  </ItemGroup>
+
+</Project>

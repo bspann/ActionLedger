@@ -1,4 +1,4 @@
-## ActionLedger — VisualStudio / .NET + Node ignores
+## ActionLedger — VisualStudio / .NET ignores
 
 # Build results
 [Bb]in/
@@ -86,18 +86,8 @@ PublishScripts/
 *.svclog
 *.scc
 
-# Node / Angular
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
-.angular/
-dist/
-.npm/
-
-# Generated Angular API client (regenerated from the committed OpenAPI contract)
-web/actionledger-web/src/app/core/api/
+# Generated typed API client (regenerated from the committed OpenAPI contract by a pre-build target)
+src/ActionLedger.Web/Core/Api/
 
 # Playwright
 **/playwright-report/

@@ -1,7 +1,9 @@
 name: ci
 
 # The required check on main. Restore, build, and run every test project on the pinned SDK.
-# Angular lint/test/build and image builds join this workflow in Stories 1.5 and 1.7.
+# The Blazor project and its bUnit tests ride `dotnet build` and `dotnet test` through the
+# solution, so there is no separate frontend step and none is coming. Image builds join this
+# workflow in Story 1.7.
 
 on:
   pull_request:
@@ -44,6 +46,6 @@ jobs:
       - name: Build
         run: dotnet build ActionLedger.sln --configuration Release --no-restore
 
-      # Runs all seven test projects, Architecture.Tests among them.
+      # Runs all eight test projects, Architecture.Tests and Web.Tests among them.
       - name: Test
         run: dotnet test ActionLedger.sln --configuration Release --no-build

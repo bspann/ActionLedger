@@ -93,7 +93,11 @@ internal sealed record ProjectFile(string Name, string[] PackageReferences, stri
             .Where(include => !string.IsNullOrWhiteSpace(include))
             .Select(include => include!.Trim());
 
-    private static readonly DirectoryInfo RepositoryRoot = FindRepositoryRoot();
+    /// <summary>
+    /// The directory holding <c>ActionLedger.sln</c>. Shared with <c>WebStructureTests</c>, which
+    /// needs the same root to check the web project's folder shape — one root-finder per assembly.
+    /// </summary>
+    internal static readonly DirectoryInfo RepositoryRoot = FindRepositoryRoot();
 
     private static DirectoryInfo FindRepositoryRoot()
     {

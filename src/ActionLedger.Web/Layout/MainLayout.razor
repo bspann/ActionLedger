@@ -1,0 +1,25 @@
+@inherits LayoutComponentBase
+@using ActionLedger.Web.Core.Theme
+
+@* MudBlazor's four providers, the app's own theme, and the content container.
+   The app bar, the two destinations, and the user menu are Story 1.6.
+
+   ObserveSystemDarkModeChange is how dark mode is reached: MudThemeProvider swaps the values of
+   its own --mud-palette-* properties when IsDarkMode flips and adds no class to the document, so
+   tokens.css cannot follow it by selector. Putting the dark token pairs under
+   prefers-color-scheme: dark puts both layers on one signal with no plumbing.
+
+   MaxWidth.Large and Gutters are stock MudBlazor and are exactly DESIGN.md's content-max (1280px)
+   and page-gutter (24px), so nothing is restyled to reach them. *@
+<MudThemeProvider Theme="@ActionLedgerTheme.Instance" ObserveSystemDarkModeChange="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Gutters="true">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
