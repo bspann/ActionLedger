@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ActionLedger.Eval</RootNamespace>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/ActionLedger.Application/ActionLedger.Application.csproj" />
+    <ProjectReference Include="../../src/ActionLedger.Infrastructure/ActionLedger.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
