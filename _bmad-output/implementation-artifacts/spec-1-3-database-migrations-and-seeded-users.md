@@ -2,7 +2,7 @@
 title: 'Story 1.3 — Database, first migration, migration bundle, and seeded users'
 type: 'feature'
 created: '2026-09-21'
-status: 'in-review'
+status: 'done'
 route: 'dispatch'
 baseline_commit: 'b8e7b9256f5f58009d1f376d1b35548ac64d1352'
 review_loop_iteration: 0
@@ -162,6 +162,19 @@ both seeders together; `pg_advisory_xact_lock` is what makes the second a no-op.
 row in place would keep the count and still be a change; the `FixedClock` is what makes `createdAt`
 comparable at all.
 
+**No credential value exists anywhere in this repository, and that is enforced rather than agreed.**
+`Seed:DefaultPassword` has no default in code, nothing in `appsettings.json`, and a placeholder in
+`.env.example`; `SeedOptionsValidator` refuses a host told to seed without one, and the seeder
+refuses again a ring lower. The tests do not read a constant either — `TestHost.NewPassword()`
+invents one per call and each assertion verifies against the value that particular run seeded with,
+so no test here can pass by agreeing with something on disk. `Api.Tests` still boots with
+`Seed:Enabled=false` and therefore needs no password at all, which is what
+`Seeding_off_needs_no_password` pins down. One consequence worth knowing:
+`dotnet run --project src/ActionLedger.Api` with no environment now fails at startup naming
+`Seed:DefaultPassword`, because `appsettings.json` leaves `Seed:Enabled` true. `--export-openapi` is
+unaffected — it never starts the host, so `ValidateOnStart` never runs, and it was re-checked with
+nothing set.
+
 **Toolchain.** SDK 10.0.401 at `~/.dotnet`; every command below ran after
 `export PATH="$HOME/.dotnet:$PATH"` and `export DOTNET_ROOT="$HOME/.dotnet"`. Docker is OrbStack
 29.4.0. `postgres:18-alpine` was pulled once; the first Testcontainers run on a clean machine pays
@@ -184,14 +197,20 @@ for that pull.
 - **`Infrastructure/InfrastructureRegistration.cs` and `Seed/SeedSettings.cs` added.** The Code Map
   says to wire the Api's `DatabaseOptions` and `SeedOptions`, not redefine them. Infrastructure
   therefore reads no configuration at all: the composition root passes accessors over its own
-  validated options, and `SeedSettings` is the two values arriving, not a second options class. The
-  defaults still live in exactly one place, `SeedOptions`.
+  validated options, and `SeedSettings` is the two values arriving, not a second options class.
+  `Seed:Enabled`'s default lives in exactly one place, `SeedOptions`; `Seed:DefaultPassword` has no
+  default to live anywhere.
 - **`Seed:DefaultPassword` added to `SeedOptions`,** per the story's Decisions, with **no default
   anywhere**. `SeedOptionsValidator` fails the host at startup when seeding is on and the key is
   absent, naming it. `.env.example` carries a placeholder only, and `Infrastructure.Tests`
   generates a password per run rather than sharing a constant. An earlier draft of this spec
   named a committed default; that contradicted NFR5 and was corrected before anything was
   committed.
+- **`DemoDataSeeder` refuses a blank password itself.** `ValidateOnStart` already stops a host
+  before any hosted service runs, but the invariant belongs to the seeder rather than to whoever
+  composes it: `StartAsync` throws an `InvalidOperationException` naming the key. Nothing invents a
+  credential at any layer, and `Infrastructure.Tests` asserts the refusal directly rather than
+  reaching it only through the Api.
 - **`Infrastructure/Persistence/DatabaseReadiness.cs` and `ModelConventions.cs` added.** Neither is
   in the task list. The first is what `/health/ready` asks, so the Api ring never holds a
   `DbContext`; the second is the model-wide sweep the `AppDbContext` line calls for, split out
@@ -237,9 +256,9 @@ for that pull.
 | Command | Expected | Result |
 |---------|----------|--------|
 | `dotnet build ActionLedger.sln` | succeeds, zero warnings | Build succeeded, 0 Warning(s), 0 Error(s) |
-| `dotnet test ActionLedger.sln` | all projects pass, Testcontainers included | Passed — **71 tests**, 0 failed (57 before this story: 11 added in `Infrastructure.Tests`, 3 in `Api.Tests`) |
-| every `bin`/`obj` wiped, then restore + build + test | both succeed | Passed — 71, failed 0 |
-| `dotnet build -c Release` + `dotnet test -c Release --no-build` (CI's exact shape) | green | Passed — 71, failed 0 |
+| `dotnet test ActionLedger.sln` | all projects pass, Testcontainers included | Passed — **74 tests**, 0 failed (57 before this story: 12 added in `Infrastructure.Tests`, 5 in `Api.Tests`) |
+| every `bin`/`obj` wiped, then restore + build + test | both succeed | Passed — 74, failed 0 |
+| `dotnet build -c Release` + `dotnet test -c Release --no-build` (CI's exact shape) | green | Passed — 74, failed 0 |
 | `dotnet run --project src/ActionLedger.Api -- --export-openapi`, with `Database__ConnectionString`, `Jwt__Key`, and `Jwt__Issuer` all unset and no database anywhere | succeeds | `Wrote .../web/actionledger-web/openapi.json`, exit 0 |
 | re-export to a second path, `diff` against the committed file | byte-identical | identical |
 | `docker build -f src/ActionLedger.Api/Dockerfile .` | image builds, bundle present | built; `/app/migrate/efbundle`, 36 MB, `--help` answers |
@@ -249,6 +268,8 @@ for that pull.
 | restart the api container | second start changes nothing | `"CreatedCount":0`, still 4 rows |
 | `curl /health` and `/health/ready`, database up | 200, 200 | `{"status":"healthy"}`, `{"status":"ready"}` |
 | `docker stop` the database, then the same two | 200 and 503 | `{"status":"healthy"}` [200]; `{"status":"unavailable"}` [503] |
+| `grep -rn` for any credential literal across `src`, `tests`, `.env.example`, `appsettings*.json`, and this spec | none | none; `.env.example` holds `replace-with-your-own-demo-password` and nothing else |
+| `git log --all -S` for the value the corrected spec removed | never reached history | 0 commits, 0 occurrences in any diff; nothing staged and no commit made on this branch |
 
 **Every new guard was verified red, then reverted.** A test that cannot fail is not a guard:
 
@@ -258,6 +279,8 @@ for that pull.
 | the seeder's "does this user already exist" check deleted | `DemoDataSeederTests.A_second_start_changes_nothing` and `DemoDataSeederTests.Concurrent_starts_serialize_on_the_advisory_lock_and_still_seed_once` |
 | `ApplyColumnName` removed from `ModelConventions`, columns left PascalCase in the migration | all three `SchemaShapeTests` |
 | `DatabaseReadiness` returning `true` from both failure paths | `ReadinessTests.Readiness_is_503_when_the_database_is_unreachable` |
+| a built-in default restored on `SeedOptions.DefaultPassword` | `StartupValidationTests.Seeding_without_a_password_fails_the_host_naming_the_key` — *Assert.Throws() Failure: Exception type was not an exact match*. The host started and the seeder ran for 57 seconds against the test connection string, which is exactly the failure NFR5 forbids |
+| the seeder's own blank-password refusal deleted | `DemoDataSeederTests.Seeding_on_without_a_password_refuses_rather_than_inventing_one` — *Assert.Throws() Failure: No exception was thrown* |
 
 Two further checks found the mutation was not expressible rather than not caught: deleting the
 `_ = await context.Database.CanConnectAsync(...)` call fails the build outright (`CS9113: Parameter
