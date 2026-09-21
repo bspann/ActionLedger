@@ -379,44 +379,17 @@ covered by `ShellTests` against the real components.
 
 ## Auto Run Result
 
-Status: blocked
-Blocking condition: no subagents
+Status: done — the `no subagents` escalation is resolved.
 
-**What this run was.** Story 1.6's spec arrived at `status: done` with
-`followup_review_recommended: true`, so step-01 routed it to step-04 as a follow-up review pass
-(`review_loop_iteration` reset to 0, `followup_pass` true). No code was written, planned, or
-changed by this run.
+The run that produced this section could not complete story 1.6's follow-up review: all four
+review layers were dispatched and none returned, so it halted at `blocked` as `workflow.md`
+directs. No code was written, planned, or changed by it; the only file it touched was this spec.
 
-**How far it got.** The diff was staged successfully: `git diff 99ccd7f..` over `src` and `tests`,
-35 files, 192 kB, written to the run's temp diff file. The spec itself was held back from that
-diff so it could go to the edge-case layer alone as the claims file, which is what step-04
-specifies. All four review layers — blind-hunter, edge-case-hunter, verification-gap, and
-intent-alignment — were then launched together in a single message with their placeholders
-substituted.
+That review has since been run **inline in a single session**, against the same diff
+(`99ccd7f..5c2f851`, 35 files), and its findings are recorded under `## Review Triage Log`
+(2026-09-21 — Follow-up review pass): 4 findings, medium 1, false 1, low 2 rejected. The one
+unverified risk the prior pass named — `ApiFailures`' undeclared-status branch — was refuted, and
+one new medium finding was deferred as **DW-4**. `review_loop_iteration` is 1 and
+`followup_review_recommended` is cleared, so no further pass is owed.
 
-**Why it is blocked.** None of the four layers ever returned a result. After roughly an hour all
-four showed as idle with no output delivered and no reply to a direct request for their findings.
-A control subagent was then spawned whose entire task was to emit one word using no tools; it too
-sat idle with nothing delivered. Subagent results are not reaching this session in this
-environment, so the review layers cannot be run and their findings cannot be triaged.
-`workflow.md` makes subagents mandatory where a step calls for them and directs this exact halt.
-
-**What this does NOT mean.** It is not a defect in Story 1.6's code, and it is not a failed
-review. The prior review pass recorded in `## Review Triage Log` (2026-09-21, 33 findings, 13
-patched, 1 deferred) still stands, as does the verification recorded under `## Verification`.
-What is missing is the second, confirming pass that the prior pass asked for.
-
-**The unverified risk the follow-up pass was meant to close** is the one the prior pass named:
-`ApiFailures`' undeclared-status branch deserializes the raw response body into `ProblemDetails`,
-and no operation in the committed contract can return a titled undeclared status, so that branch
-has only ever been exercised against synthetic bodies. It first meets a real server response in
-Epic 2.
-
-**Repository state.** No code was modified by this run. `src/` and `tests/` are untouched since
-`5c2f851`. The only file this run wrote is this spec — `status` and this section. The staged diff
-lives in the session scratchpad and was not added to version control. Nothing was committed and
-nothing was pushed.
-
-**What would unblock it.** Re-dispatch this spec for a follow-up review pass in a session where
-subagent results are delivered. The spec is at `blocked`, so a re-dispatch needs its status set
-back to `done` (the follow-up-pass route) by whoever owns that decision.
+The originating loop run (`20260921-134906-b65a`) is stopped and needs no resume.
