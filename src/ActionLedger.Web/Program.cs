@@ -5,9 +5,8 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
 
-// The composition root. Story 1.5 ships the scaffold Story 1.6 fills in: the router, the MudBlazor
-// providers, the theme, the design tokens, and the generated client behind the AD-14 seam. There is
-// deliberately no routable component yet — every page, the session, and the shell are Story 1.6.
+// The composition root. AddMudServices registers ISnackbar and IDialogService, which the
+// delegating handler and the shell both depend on, so it has to run before the client is wired.
 
 WebAssemblyHostBuilder builder = WebAssemblyHostBuilder.CreateDefault(args);
 
@@ -16,7 +15,8 @@ builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddMudServices();
 
-// AD-14 — the HttpClient and the generated client are constructed in Core and nowhere else.
+// AD-14 — the HttpClient, the delegating handler, the generated client, and the two cross-feature
+// state services are all constructed in Core and nowhere else.
 builder.Services.AddActionLedgerApiClient(builder.Configuration, builder.HostEnvironment.BaseAddress);
 
 // Per-feature data services. Each one wraps the generated client; nothing above them sees HTTP.

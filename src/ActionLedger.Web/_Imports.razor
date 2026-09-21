@@ -1,8 +1,17 @@
 @* AD-14 — System.Net.Http is deliberately absent here. HTTP lives in Core/ and Features/*/Data/,
-   and those files write their own usings, so no component picks one up by ambient import. *@
+   and those files write their own usings, so no component picks one up by ambient import.
+   The generated client's namespace is absent for the same reason: the client and its DTOs stop at
+   the seam, and WebStructureTests fails the build if a component reaches one. *@
 @using Microsoft.AspNetCore.Components.Routing
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
 @using MudBlazor
 @using ActionLedger.Web
+@using ActionLedger.Web.Core
+@using ActionLedger.Web.Core.Auth
+@using ActionLedger.Web.Core.Errors
+@using ActionLedger.Web.Core.Formatting
+@using ActionLedger.Web.Core.Shell
+@using ActionLedger.Web.Core.Users
 @using ActionLedger.Web.Layout
+@using ActionLedger.Web.Shared

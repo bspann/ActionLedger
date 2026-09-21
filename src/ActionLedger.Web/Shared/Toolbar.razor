@@ -1,0 +1,50 @@
+@* EXPERIENCE.md, Component Patterns — the global toolbar: one MudAppBar, the product name
+   linking to the Meeting List, exactly two destinations with active state, and a user menu
+   showing display name and Role with one item, Sign out. There is no side navigation.
+
+   Presentational by AD-14: parameters in, an EventCallback out. Signing out is the shell's
+   command, not this component's, so nothing here touches SessionState. *@
+<MudAppBar Fixed="true" Elevation="1">
+    <MudLink Href="/meetings"
+             Color="Color.Inherit"
+             Typo="Typo.h6"
+             Underline="Underline.None"
+             Class="mr-6">@Voice.ProductName</MudLink>
+
+    @* Match.Prefix so a detail route under a destination keeps its parent marked active. *@
+    <MudNavLink Href="/meetings" Match="NavLinkMatch.Prefix">@Voice.Meetings</MudNavLink>
+    <MudNavLink Href="/actions" Match="NavLinkMatch.Prefix">@Voice.Actions</MudNavLink>
+
+    <MudSpacer />
+
+    @* The Role sits beside the trigger rather than inside the menu, so it is visible without
+       opening anything — EXPERIENCE.md asks the menu to show display name and Role. *@
+    <MudText Typo="Typo.body2" Class="mr-3">@Role</MudText>
+
+    <MudMenu Label="@DisplayName"
+             AriaLabel="@DisplayName"
+             Color="Color.Inherit"
+             Variant="Variant.Text">
+        <MudMenuItem OnClick="OnSignOut">@Voice.SignOut</MudMenuItem>
+    </MudMenu>
+</MudAppBar>
+
+@code {
+    /// <summary>The signed-in person's display name. The user-menu trigger's visible text.</summary>
+    [Parameter]
+    [EditorRequired]
+    public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// The Role, already in the PRD Glossary's wording. A string because the generated enum may
+    /// not cross the seam, and display-ready because <c>RoleNames</c> — not this component — owns
+    /// the fact that <c>ActionOfficer</c> reads "Action Officer" to a person.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public string? Role { get; set; }
+
+    /// <summary>Raised when Sign out is chosen. Clearing the session is the layout's job.</summary>
+    [Parameter]
+    public EventCallback OnSignOut { get; set; }
+}

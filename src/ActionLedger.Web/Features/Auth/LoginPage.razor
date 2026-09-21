@@ -1,0 +1,155 @@
+@page "/"
+@page "/login"
+@using ActionLedger.Web.Features.Auth.Data
+
+@* The app's first routable component (FR-23). Two routes: "/" is where an unauthenticated
+   visitor lands, "/login" is where the delegating handler sends an expired session.
+
+   AD-14 — nothing here is a generated type. AuthService hands back a SignInOutcome carrying
+   web-owned values, so this file never sees SignInResult, Role, ProblemDetails, or ApiException.
+
+   The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to. *@
+
+@inject AuthService Auth
+@inject SessionState Session
+@inject UserDirectory Directory
+@inject NavigationManager Navigation
+
+@* Nothing renders for a signed-in visitor. OnInitialized navigates them away, but a navigation
+   is not an unmount: leaving the markup in place would flash the form — and hand a screen reader
+   a second username field — on the way to Meetings. *@
+@if (!Session.IsSignedIn)
+{
+    <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@Voice.ProductName</MudText>
+
+    @* A plain form rather than MudForm: Enter submits it for free, which is the whole reason it
+       is here. preventDefault stops the browser's own navigation. *@
+    <form @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+        <MudTextField T="string"
+                      @bind-Value="username"
+                      Immediate="true"
+                      Label="@Voice.Username"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      id="username"
+                      autocomplete="username" />
+
+        <MudTextField T="string"
+                      @bind-Value="password"
+                      Immediate="true"
+                      Label="@Voice.Password"
+                      InputType="InputType.Password"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      id="password"
+                      autocomplete="current-password"
+                      aria-describedby="@(refused ? SignInFailedId : null)" />
+
+        <MudButton ButtonType="ButtonType.Submit"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@inFlight">@Voice.SignIn</MudButton>
+    </form>
+
+    @if (refused)
+    {
+        @* UX-DR18 — a refusal is inline under the button, never a snackbar and never a redirect,
+           and it does not say which half was wrong. role="alert" is what makes it reach a screen
+           reader: the message appears with no focus change, so without it a keyboard user presses
+           Sign in and hears nothing at all. *@
+        <MudText Typo="Typo.body2"
+                 Color="Color.Error"
+                 Class="mt-4"
+                 id="@SignInFailedId"
+                 role="alert">@Voice.SignInFailed</MudText>
+    }
+
+    @if (failure is not null)
+    {
+        <div class="mt-4">
+            <LoadFailure Title="@failure.Title" OnRetry="SubmitAsync" />
+        </div>
+    }
+}
+
+@code {
+    /// <summary>Where a signed-in visitor goes, and where a sign-in lands with no captured route.</summary>
+    private const string HomeRoute = "/meetings";
+
+    /// <summary>Shared by the message's own id and the password field's aria-describedby.</summary>
+    private const string SignInFailedId = "sign-in-failed";
+
+    private string username = string.Empty;
+    private string password = string.Empty;
+    private bool inFlight;
+    private bool refused;
+    private ApiFailure? failure;
+
+    protected override void OnInitialized()
+    {
+        // EXPERIENCE.md calls the unauthenticated redirect "a route-level auth check, not a router
+        // guard", so each routable component checks for itself. This is the other half of it: a
+        // signed-in visitor has no business on the login form.
+        if (Session.IsSignedIn)
+        {
+            Navigation.NavigateTo(HomeRoute);
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        if (inFlight)
+        {
+            return;
+        }
+
+        inFlight = true;
+        refused = false;
+        failure = null;
+
+        try
+        {
+            SignInOutcome outcome = await Auth.SignInAsync(username, password);
+
+            if (outcome.User is { } user)
+            {
+                await SignInAsync(user);
+                return;
+            }
+
+            // A 401 is a refused credential and a 400 is a malformed one. Both are the same thing
+            // to the person at the keyboard, and neither is a crash. Anything else — a 500, a
+            // transport failure — is a load failure with Retry, which re-submits.
+            if (outcome.Failure is { StatusCode: 400 or 401 })
+            {
+                refused = true;
+            }
+            else
+            {
+                failure = outcome.Failure;
+            }
+        }
+        finally
+        {
+            inFlight = false;
+        }
+    }
+
+    private async Task SignInAsync(SignedInUser user)
+    {
+        Session.SignIn(user);
+
+        // Cleared first, because EnsureLoadedAsync returns early once IsLoaded is set. A 401
+        // expiry clears the session but not the roster — only the menu's sign-out does that — so
+        // without this the next person to sign in on the same tab inherits the previous
+        // session's roster and never fetches their own.
+        Directory.Clear();
+
+        // AD-14 — the roster loads once after sign-in. It has no consumer until Epic 3 and it
+        // swallows its own failures, so awaiting it cannot block the landing.
+        await Directory.EnsureLoadedAsync();
+
+        // Restore-once: the route the expired session was heading for wins, and is forgotten.
+        Navigation.NavigateTo(Session.TakeAttemptedRoute() ?? HomeRoute);
+    }
+}
