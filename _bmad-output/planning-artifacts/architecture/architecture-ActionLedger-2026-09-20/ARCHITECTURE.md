@@ -12,11 +12,11 @@ This document explains the architecture for human readers. The binding contract 
 
 ## 1. Shape of the system
 
-ActionLedger is one ASP.NET Core API, one Angular web app, one PostgreSQL database, and an outbox worker hosted inside the API process. An AI provider sits behind one seam. Everything ships as containers.
+ActionLedger is one ASP.NET Core API, one Blazor WebAssembly web app, one PostgreSQL database, and an outbox worker hosted inside the API process. An AI provider sits behind one seam. Everything ships as containers.
 
 ```mermaid
 graph LR
-  browser[Browser] --> web[web<br/>nginx + Angular]
+  browser[Browser] --> web[web<br/>nginx + Blazor WASM]
   web -->|/api/v1| api[api<br/>ASP.NET Core<br/>+ OutboxDispatcher]
   api --> db[(PostgreSQL)]
   migrate[migrate<br/>EF migration bundle<br/>one-shot] --> db
@@ -186,7 +186,7 @@ One request runs an extraction and stores the run whether it succeeds or fails. 
 sequenceDiagram
   autonumber
   actor Dana as Dana (Action Officer)
-  participant Web as Angular review feature
+  participant Web as Blazor review feature
   participant Ctl as ExtractionRunsController
   participant H as RunExtractionHandler
   participant X as ChatClientActionExtractor
@@ -265,22 +265,22 @@ Users are seeded with hashed passwords by the in-process seeder, from the fixtur
 
 ## 7. Frontend
 
-The web app is built from Angular standalone components with signals and Angular Material. How MVVM maps onto Angular:
+The web app is built from Blazor WebAssembly components with MudBlazor. The separation of concerns is the same one MVVM describes, expressed in Blazor's own vocabulary:
 
-| MVVM | Angular | Rule |
+| Concern | Blazor | Rule |
 | --- | --- | --- |
-| View | Component template | Renders state, binds events. |
-| ViewModel | Component class | Exposes signals and command methods. No `HttpClient`. |
-| Model | Generated API client and DTO interfaces from `openapi.json` | The only shapes that cross the boundary. |
+| View | `.razor` markup | Renders state, binds events. |
+| View logic | Component class (`@code` or code-behind) | Holds state fields and command methods. No `HttpClient`. |
+| Model | Generated API client and DTO records from `openapi.json` | The only shapes that cross the boundary. |
 
-The feature folders are `auth`, `meetings`, `review`, `actions`, and `audit`. Each route has one smart container, with presentational children that take inputs and emit outputs. HTTP happens only in each feature's data service (AD-14). The full diagram lives in `docs/frontend-architecture.md`.
+The feature folders are `Auth`, `Meetings`, `Review`, `Actions`, and `Audit` under `src/ActionLedger.Web/Features`. Each route has one routable container (`<Noun>Page.razor`), with presentational children that take `[Parameter]` inputs and raise `EventCallback` outputs. HTTP happens only in each feature's `Data/<Feature>Service.cs` (AD-14), enforced by an `Architecture.Tests` rule rather than a lint rule. The full diagram lives in `docs/frontend-architecture.md`.
 
 ## 8. Deployment and environments
 
 | Environment | How | AI provider |
 | --- | --- | --- |
 | Local dev | `docker compose up` (db, migrate, api, web, receiver) | `Fake` by default; `LocalOpenAI` pointed at LM Studio on the host |
-| CI | GitHub Actions `ci.yml`: build, tests with Testcontainers, architecture tests, Angular lint/test/build, image build | `Fake` |
+| CI | GitHub Actions `ci.yml`: build, tests with Testcontainers, architecture tests, bUnit component tests, image build | `Fake` |
 | Eval | `eval.yml` on `/prompts` or extractor changes and manual dispatch | `Fake` always; `LocalOpenAI` when `LOCAL_AI_BASE_URL` is set; report committed from a local run otherwise |
 | Azure | `cd.yml` on merge to `main` and on `v*` tags: push images to a registry, run the migration bundle, deploy `api` and `web` to Azure Container Apps | `AzureOpenAI` or `Fake` |
 
@@ -296,7 +296,7 @@ Migrations never run inside the API at startup. The `migrate` service (compose) 
 | Api.Tests | WebApplicationFactory | 401, 403 on Cancelled as Action Officer, 409 on second notes save, 409 on a concurrent second decision, OpenAPI snapshot matches the committed file |
 | Architecture.Tests | NetArchTest.eNhancedEdition | Application has no reference to EF Core, ASP.NET Core, or an AI SDK |
 | Eval | Scorer over the fixture catalog | Fake provider scores 1.0; injection case yields no injected action; LocalOpenAI and AzureOpenAI scored when configured |
-| Angular `*.spec.ts` | `ng test` | Container components and data services with the generated client mocked |
+| bUnit `tests/Web.Tests` | `dotnet test` | Routable components and data services with the generated client mocked |
 | Web.E2E | Playwright | UJ-1 happy path against compose with `Fake` |
 
 ## 10. Decisions

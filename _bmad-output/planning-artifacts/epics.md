@@ -50,7 +50,7 @@ FR23: A User can log in with username and password and receive an 8-hour JWT car
 FR24: API endpoints enforce Role: writes require ActionOfficer or Lead, the Cancelled transition requires Lead, reads require any authenticated User; 401 unauthenticated, 403 wrong role.
 FR25: Every revision and created record carries the id of the User from the JWT (never from request parameters); seed data is attributed to a system User "Seed".
 FR26: Every read and write is available through the REST API for resources meetings, notes, runs, proposed actions, tracked actions, revisions, users (read-only), webhook subscriptions (read-only), outbox messages (read-only), ai/provider, auth; errors are RFC 9457 ProblemDetails with stable types; lists page with `page` and `pageSize` (default 50, max 200).
-FR27: The API publishes an OpenAPI 3.x document generated from controllers with schemas, security scheme, and example payloads; Swagger UI is served in Development and compose with JWT bearer support; the Angular typed client is generated from the committed `openapi.json` so a contract change breaks the web build.
+FR27: The API publishes an OpenAPI 3.x document generated from controllers with schemas, security scheme, and example payloads; Swagger UI is served in Development and compose with JWT bearer support; the Blazor typed client is generated from the committed `openapi.json` so a contract change breaks the web build.
 FR28: All routes are prefixed `/api/v1`; only health and Swagger are unversioned.
 FR29: A Webhook Subscription has URL, secret (never returned, masked on read), active flag, event types; subscriptions are seeded and read-only in v1; event type `action.approved`.
 FR30: On Tracked Action creation, one Outbox Message per active matching subscription is written in the same transaction; the payload carries event type, event id, timestamp, the Tracked Action, its proposal, and the Review Decision.
@@ -76,14 +76,14 @@ NFR4: Every Extraction Run and every delivery attempt writes one structured log 
 NFR5: All writes require a valid JWT; secrets only from environment or user secrets; CodeQL, Dependabot, secret scanning enabled; `.env.example` only.
 NFR6: Review Screen and Action List are keyboard operable with named controls; low-confidence flag not color alone; manual keyboard pass and browser axe scan recorded in the PR checklist for UI stories.
 NFR7: NetArchTest (eNhancedEdition) fails the build if Domain or Application reference EF Core, ASP.NET Core, or any AI SDK, or if any project references outward.
-NFR8: Backend tests cover Review State and Action Status transitions on entities, use cases with the Fake provider, repositories against Testcontainers PostgreSQL, and API auth; Angular unit tests cover view-model logic; one Playwright test runs UJ-1 against compose with Fake.
+NFR8: Backend tests cover Review State and Action Status transitions on entities, use cases with the Fake provider, repositories against Testcontainers PostgreSQL, and API auth; bUnit component tests cover component logic; one Playwright test runs UJ-1 against compose with Fake.
 NFR9: Only MIT, Apache-2.0, or BSD dependencies; license review in the PR checklist; excluded by license: FluentAssertions 8+, MediatR 13+, AutoMapper 15+, MassTransit 9, JsonSchema.Net.
-NFR10: The compose environment runs on macOS and Windows with Docker Desktop; no host-installed .NET or Node needed to run the demo.
-NFR11: Delivery pipeline: `ci.yml` (restore, build, tests incl. Testcontainers, architecture tests, OpenAPI snapshot, ng lint/test/build, image build) on PRs and main; `eval.yml` with path filter and dispatch; `cd.yml` on main and `v*` tags (GHCR push, migration bundle, Azure Container Apps deploy or documented no-op when secrets absent); branch protection on main; PR template checklist; conventional commits; Project board with one issue per story; `v1.0.0` tag with release notes.
+NFR10: The compose environment runs on macOS and Windows with Docker Desktop; no host-installed .NET needed to run the demo.
+NFR11: Delivery pipeline: `ci.yml` (restore, build, tests incl. Testcontainers, architecture tests, OpenAPI snapshot, bUnit component tests, image build) on PRs and main; `eval.yml` with path filter and dispatch; `cd.yml` on main and `v*` tags (GHCR push, migration bundle, Azure Container Apps deploy or documented no-op when secrets absent); branch protection on main; PR template checklist; conventional commits; Project board with one issue per story; `v1.0.0` tag with release notes.
 
 ### Additional Requirements
 
-- Starter: none. Greenfield `dotnet new sln` with four projects plus seven test projects and `ng new` (Angular 22, zoneless and standalone defaults, TypeScript 6.0.x pinned, never `typescript@latest`).
+- Starter: none. Greenfield `dotnet new sln` with four projects plus seven test projects, and `dotnet new blazorwasm` for `src/ActionLedger.Web` (Microsoft.AspNetCore.Components.WebAssembly 10.0.12, MudBlazor 9.10.0); `tests/Web.Tests` on bUnit 2.11.3 joins the solution with the web project, bringing the test projects to eight.
 - Clean Architecture rings Domain, Application, Infrastructure, Api; `Architecture.Tests` with NetArchTest.eNhancedEdition 1.4.5 enforcing AD-1 including the Application allowlist and the single-normalizer rule.
 - One handler per use case (`<Verb><Noun>Handler`), reads as `<Feature>Queries` over `IReadDb`; controllers map only (AD-2).
 - Aggregate roots and repositories per AD-3: `Meeting`, `ExtractionRun` (via `ExtractionRun.Start`), `TrackedAction`, `ActionRevision`, `User`, `WebhookSubscription`, `OutboxMessage`; `ProposedAction.Decide` returns a `DecisionResult` and raises `TrackedActionCreated` on the returned Tracked Action; handlers add roots and revisions explicitly.
@@ -93,11 +93,11 @@ NFR11: Delivery pipeline: `ci.yml` (restore, build, tests incl. Testcontainers, 
 - PostgreSQL 18 via Npgsql EF 10.0.3; UUIDv7 with `ValueGeneratedNever`; Add-only repositories; `text[]` and `jsonb` behind value converters; raw SQL only in `ClaimBatchAsync` and `SeedRepository.AcquireLockAsync` (AD-10).
 - AI seam: `IActionExtractor` never throws; `ChatClientActionExtractor` on `Microsoft.Extensions.AI` 10.10.0 with the OpenAI SDK 2.14.0 `Endpoint` for LocalOpenAI (LM Studio at `host.docker.internal:1234/v1`, Ollama) and Azure `/openai/v1/`; `strict = true` structured output; strict System.Text.Json deserialization into `ExtractionOutput` plus `ExtractionOutputValidator`; `TextNormalization` and `ExcerptVerifier` in Application/Ai; `JsonSchemaExporter` parity test; prompts embedded as resources with `IPromptCatalog` and `Ai:PromptVersion`; `SchemaVersion` from the schema file's `version` property (AD-6, AD-11).
 - Identity: HS256 JWT, `PasswordHasher<User>`, `ICurrentUser` from `sub`, `SeedCurrentUser` for the seeder only (AD-12).
-- API contract: `openapi.json` committed at `web/actionledger-web/openapi.json`, exported by `--export-openapi`, guarded by `OpenApiSnapshotTest`; `ng-openapi-gen` in npm `prebuild` into git-ignored `core/api`; resources and query parameters per AD-13; DTO fields `isLowConfidence`, `suggestedOwnerUserId`, `decidedByDisplayName`, `rejectionReason`, `trackedActionId`, `isOverdue`, `ownerDisplayName`, `lastChangedByDisplayName`, `promptVersion`, `runCount`, `trackedActionCount`, `proposalCount`, `pendingCount`; ProblemDetails types validation, unauthorized, forbidden, not-found, conflict; `/health` and `/health/ready`.
+- API contract: `openapi.json` committed at `src/ActionLedger.Web/openapi.json` (moved there by Story 1.5), exported by `--export-openapi`, guarded by `OpenApiSnapshotTest`; `NSwag.MSBuild` 14.7.1 in a pre-build target into git-ignored `Core/Api/`; resources and query parameters per AD-13; DTO fields `isLowConfidence`, `suggestedOwnerUserId`, `decidedByDisplayName`, `rejectionReason`, `trackedActionId`, `isOverdue`, `ownerDisplayName`, `lastChangedByDisplayName`, `promptVersion`, `runCount`, `trackedActionCount`, `proposalCount`, `pendingCount`; ProblemDetails types validation, unauthorized, forbidden, not-found, conflict; `/health` and `/health/ready`.
 - Overdue as a Domain expression `TrackedActionRules.IsOverdueOn(today)` used by both entity and queries (AD-15).
 - Options with `ValidateOnStart`; startup probe (`GET {BaseUrl}/models` for LocalOpenAI); `API_UPSTREAM` templated into nginx (AD-16).
 - Deployment: `migrate` one-shot bundle with `depends_on: service_completed_successfully`; `extra_hosts host-gateway`; Dockerfiles for api (multi-stage incl. bundle), web, receiver, migrate; GHCR images tagged by SHA and version; Container Apps liveness `/health` and readiness `/health/ready`; Azure Database for PostgreSQL Flexible Server; no-op deploy path (AD-17).
-- Tests per ring (AD-18) including the NFR3 outbox test, inserts-only test, revision-copy agreement test, `OpenApiSnapshotTest`, concurrent-decision test, Angular `*.spec.ts`.
+- Tests per ring (AD-18) including the NFR3 outbox test, inserts-only test, revision-copy agreement test, `OpenApiSnapshotTest`, concurrent-decision test, bUnit component tests in `tests/Web.Tests`.
 - Eval project reads the fixture catalog, applies no re-filter, writes JSON and markdown reports with server and model fields (AD-19).
 - AD-20: `IUnitOfWork.CommitAsync` once per handler; `xmin` concurrency tokens on ProposedAction, TrackedAction, Meeting, OutboxMessage; unique indexes `tracked_action(proposed_action_id)`, `meeting_notes(meeting_id)`, `proposed_action(extraction_run_id, ordinal)`, `user(username)`, `meeting(title, meeting_date)`; `ConcurrencyConflictException` to 409.
 - AD-21: `fixtures/extraction/` (`<case>.md` with front matter, `<case>.expected.json`, `roster.json`) embedded in Infrastructure; single source for Golden Set, Fake answers keyed by SHA-256 of normalized notes, and seed data (`seed: true` cases); seeder as a hosted service in api before the dispatcher, `Seed:Enabled`, advisory lock, aggregates with `SeedCurrentUser` and `FixedClock`, direct writes only for Delivered and Dead outbox rows, `SaveChangesAsync(suppressOutbox: true)` restricted to Infrastructure/Seed.
@@ -106,29 +106,29 @@ NFR11: Delivery pipeline: `ci.yml` (restore, build, tests incl. Testcontainers, 
 
 ### UX Design Requirements
 
-UX-DR1: Angular Material 3 with the prebuilt `azure-blue` theme as the base; no Material component restyled; Roboto Mono loaded for the `confidence-score` role.
+UX-DR1: MudBlazor 9.10.0 with a `MudTheme` palette as the base; no MudBlazor component restyled; Roboto Mono loaded for the `confidence-score` role.
 UX-DR2: Semantic color tokens implemented as CSS custom properties with light and dark pairs: ai-provenance, human-provenance, low-confidence, success, neutral-container families with their on-colors, matching DESIGN.md hex values.
 UX-DR3: Shared `ProvenanceChip` component (AI variant "Proposed by AI" with `auto_awesome`; human variant "Decided by {display name}" with `person`), icon plus text, static, timestamp rendered beside not inside.
 UX-DR4: Shared `LowConfidenceBadge` component (icon `warning`, text "Low confidence") driven by the API `isLowConfidence` flag; the proposal card adds a 4px left border in the low-confidence color.
-UX-DR5: Shared `OverdueIndicator` component rendered as a badge (icon `schedule`, text "Overdue", Material error container) driven by the API `isOverdue` flag.
+UX-DR5: Shared `OverdueIndicator` component rendered as a badge (icon `schedule`, text "Overdue", the MudBlazor error container) driven by the API `isOverdue` flag.
 UX-DR6: Shared `StatusChip` (Open, In Progress, Complete with line-through Cancelled) and `ReviewStateChip` (Pending, Approved, Edited with `edit` icon, Rejected) components using the DESIGN.md token mapping.
 UX-DR7: `PendingCounter` component on the Review Screen header ("{n} proposals pending" / "All proposals decided" with a "View actions" link), inside an `aria-live="polite"` region.
 UX-DR8: `ProposalCard` component with three states: Pending (read-only values, "AI suggested: {text}" hint always visible, "No due date proposed" and "Unassigned"/"AI suggested: none" for nulls, Source Excerpt blockquote on the AI container, Reject text button, Edit outlined, Approve filled), Edit mode (text field, owner select with Unassigned, date picker with clear, Cancel text button, "Approve" or "Approve with edits" label driven by a diff against proposed values), Decided (kept in place, keeps Source Excerpt, human provenance chip plus timestamp plus Review State chip, "Reason: {text}" or "No reason given" when Rejected, "Proposed" column beside decided values when Edited, "View action" link when Approved or Edited).
 UX-DR9: Source Excerpt highlight: focusing or hovering a card, or clicking its blockquote, highlights the matching sentence in the notes pane, scrolls to it, and sets `aria-describedby`; one highlight at a time; notes rendered with `white-space: pre-wrap`.
-UX-DR10: Review Screen two-pane layout at 1200px and wider (notes pane min 360px left, cards right, independent scroll); at 1024 to 1199px the notes pane becomes a collapsed `mat-expansion-panel` above the cards; below 1024px unsupported.
-UX-DR11: Global toolbar with product name, Meetings and Actions links with active state, user menu showing display name and role with "Sign out"; no sidenav; content max width 1280px with 24px gutters.
+UX-DR10: Review Screen two-pane layout at 1200px and wider (notes pane min 360px left, cards right, independent scroll); at 1024 to 1199px the notes pane becomes a collapsed `MudExpansionPanels` above the cards; below 1024px unsupported.
+UX-DR11: Global `MudAppBar` with product name, Meetings and Actions links with active state, a `MudMenu` user menu showing display name and role with "Sign out"; no sidenav; content max width 1280px with 24px gutters.
 UX-DR12: Meeting List table (Title, Date, Runs, Tracked Actions; row click; paginator at 50) and New meeting dialog (Title required max 200, Date required, Attendees chip input each max 100, validation messages).
 UX-DR13: Meeting Detail notes paste area (50,000 char limit with live count, caption "Notes cannot be changed after saving", Save notes confirm dialog, read-only `pre-wrap` after save with "Saved {timestamp}, immutable") and Run extraction button (disabled with visible caption "Add notes first" when no notes; in-flight progress bar and caption "Extracting with {provider} · {model}. This can take up to a minute with a local model."; navigates to Review Screen on success; failed run shown in the run list with reason).
-UX-DR14: Run list (`mat-table`: started, Prompt Version, provider and model, outcome, proposal count, Pending count, Review or Details) and Run Detail metadata definition list (all FR6 fields, tokens rendered "0" never blank, warnings expandable to dropped excerpts) with proposal rows in AI order showing Review State, decider, timestamp, rejection reason.
-UX-DR15: Action List table at Material density -1 (Description, Owner or Unassigned, Due date, Status, Meeting, Overdue indicator; sort by due date asc nulls last; paged at 50) with Filter bar (Owner select incl. Unassigned, Status multi-select, Due date range, Meeting select, Overdue only toggle; filters in URL query string; Clear filters).
-UX-DR16: Action Detail with header "Created from AI proposal, run {Prompt Version}" linking to Run Detail, Status control (allowed transitions only; Cancelled disabled with caption "Lead only" for Action Officers; Open and In Progress transitions apply on select with Undo snackbar; Complete and Cancelled confirm "This cannot be reopened" with no Undo; disabled when terminal), inline Edit fields with Save and Cancel disabled on terminal with caption "{Status} actions cannot be edited".
+UX-DR14: Run list (`MudTable`: started, Prompt Version, provider and model, outcome, proposal count, Pending count, Review or Details) and Run Detail metadata definition list (all FR6 fields, tokens rendered "0" never blank, warnings expandable to dropped excerpts) with proposal rows in AI order showing Review State, decider, timestamp, rejection reason.
+UX-DR15: Action List `MudTable` with `Dense` (Description, Owner or Unassigned, Due date, Status, Meeting, Overdue indicator; sort by due date asc nulls last; paged at 50) with Filter bar (`MudSelect` for Owner incl. Unassigned, multi-select `MudSelect` for Status, `MudDateRangePicker` for Due date range, `MudSelect` for Meeting, Overdue only toggle; filters in URL query string; Clear filters).
+UX-DR16: Action Detail with header "Created from AI proposal, run {Prompt Version}" linking to Run Detail, Status control (allowed transitions only; Cancelled disabled with caption "Lead only" for Action Officers; Open and In Progress transitions apply on select with an Undo `ISnackbar` message; Complete and Cancelled confirm "This cannot be reopened" in an `IDialogService` dialog with no Undo; disabled when terminal), inline Edit fields with Save and Cancel disabled on terminal with caption "{Status} actions cannot be edited".
 UX-DR17: `AuditEntry` timeline component, oldest first, AI entry on the purple container with all five proposed fields and Low Confidence badge when applicable, human entries with display name, "Was / Now" two-column field changes, never collapsed.
-UX-DR18: Login form (username, password, "Sign in"; on 401 "Sign-in failed. Check your username and password."); session store holds the token in memory; 401 redirects to login with snackbar and restores the attempted route.
-UX-DR19: State patterns implemented globally: cold load progress bar, load failure with Retry, not found, 403 snackbar "Your role does not allow this.", 409 snackbar "Already changed. Reloading." with refresh and no Retry, write failure snackbar with Retry and retained form values, write buttons disabled while in flight.
+UX-DR18: Login form (username, password, "Sign in"; on 401 "Sign-in failed. Check your username and password."); `SessionState` holds the token in memory; 401 redirects to login with an `ISnackbar` message and restores the attempted route.
+UX-DR19: State patterns implemented globally with `MudProgressLinear` and `ISnackbar`: cold load progress bar, load failure with Retry, not found, 403 snackbar "Your role does not allow this.", 409 snackbar "Already changed. Reloading." with refresh and no Retry, write failure snackbar with Retry and retained form values, write buttons disabled while in flight.
 UX-DR20: Voice and Tone strings used verbatim (Do column of the table), dates as `YYYY-MM-DD`, timestamps as `YYYY-MM-DD HH:mm UTC`, no relative time.
-UX-DR21: Accessibility floor: every indicator icon plus text, every icon button `aria-label`, visible labels on fields, `mat-table` sortable headers announced, focus trap and return on dialogs, Material default focus rings; manual keyboard pass and axe scan recorded in the PR checklist for Review Screen and Action List stories.
-UX-DR22: ESLint `no-restricted-imports` rule forbidding `@angular/common/http` outside `**/data/*.service.ts` and `core/`; feature folders `auth`, `meetings`, `review`, `actions`, `audit`; one smart container per route; `core/auth/session.store.ts` and `core/users/users.store.ts`.
-UX-DR23: `docs/frontend-architecture.md` with the MVVM mapping diagram (View = template, ViewModel = component class with signals and commands, Model = generated client and DTOs).
+UX-DR21: Accessibility floor: every indicator icon plus text, every icon button `aria-label`, visible labels on fields, `MudTable` sortable headers announced, focus trap and return on `IDialogService` dialogs, MudBlazor default focus rings; manual keyboard pass and axe scan recorded in the PR checklist for Review Screen and Action List stories.
+UX-DR22: An `Architecture.Tests` rule failing the build when `System.Net.Http.HttpClient` or the generated client is referenced from any type outside `Core/` and `Features/*/Data/`; feature folders `Auth`, `Meetings`, `Review`, `Actions`, `Audit`; one routable container component per route; `Core/Auth/SessionState.cs` and `Core/Users/UserDirectory.cs`.
+UX-DR23: `docs/frontend-architecture.md` with the Blazor mapping diagram (View = `.razor` markup, component class = state and command methods in code-behind, Model = generated client and DTOs).
 
 ### FR Coverage Map
 
@@ -289,26 +289,26 @@ So that every write I make is attributed to me and the API can enforce roles.
 **When** `Api.Tests` walks every operation except `auth/login` and the health routes
 **Then** each returns 401 without a token, and a `Lead`-only test action returns 403 for an ActionOfficer
 
-### Story 1.5: Angular scaffold with Material theme, tokens, and the generated API client
+### Story 1.5: Blazor WebAssembly scaffold with MudBlazor theme, tokens, and the generated API client
 
 As a developer,
-I want the Angular app scaffolded with the Material theme, the semantic tokens, the generated client, and the lint rule,
+I want the Blazor WebAssembly app scaffolded with the MudBlazor theme, the semantic tokens, the generated client, and the architecture rule,
 So that every feature screen is built on the same foundation.
 
 **Requirements:** FR27 (generated client); NFR8. **UX:** UX-DR1, UX-DR2, UX-DR22.
 
 **Acceptance Criteria:**
 
-**Given** `ng new` on Angular 22.1.7 with TypeScript pinned `~6.0.3`, zoneless and standalone defaults, strict mode, Angular Material 22.1.7 with the prebuilt `azure-blue` theme, and Roboto Mono loaded
-**When** the npm `prebuild` script runs
-**Then** `ng-openapi-gen` generates the typed client from `web/actionledger-web/openapi.json` into git-ignored `src/app/core/api/`, and a contract change fails `ng build` with a type error
+**Given** `dotnet new blazorwasm` creating `src/ActionLedger.Web` on Microsoft.AspNetCore.Components.WebAssembly 10.0.12 with nullable reference types enabled, MudBlazor 9.10.0 registered through `AddMudServices` with a `MudTheme` palette, and Roboto Mono loaded
+**When** the `NSwag.MSBuild` 14.7.1 pre-build target runs
+**Then** `openapi.json` is committed at `src/ActionLedger.Web/openapi.json` (moved there from `web/actionledger-web/`, with `--export-openapi` and `OpenApiSnapshotTest` following it) and the typed client is generated from it into git-ignored `src/ActionLedger.Web/Core/Api/`, and a contract change that has not been re-exported fails `dotnet build` with a compile error
 
-**Given** the feature folders `auth`, `meetings`, `review`, `actions`, `audit` and `core/`
-**When** ESLint runs
-**Then** the `no-restricted-imports` rule fails any import of `@angular/common/http` outside `**/data/*.service.ts` and `core/`
-**And** `ng lint`, `ng test`, and `ng build` run in `ci.yml`
+**Given** the feature folders `Auth`, `Meetings`, `Review`, `Actions`, `Audit` under `src/ActionLedger.Web/Features` and `src/ActionLedger.Web/Core/`
+**When** `Architecture.Tests` runs
+**Then** the build fails when `System.Net.Http.HttpClient` or the generated client is referenced from any type outside `Core/` and `Features/*/Data/`
+**And** `tests/Web.Tests` exists on bUnit 2.11.3, and the web project builds and its tests run as part of `dotnet build` and `dotnet test` in `ci.yml` with no separate Node step
 
-**Given** the theme loads
+**Given** the `MudTheme` loads
 **When** I inspect the styles
 **Then** CSS custom properties exist for the ai-provenance, human-provenance, low-confidence, success, and neutral-container families with light and dark pairs matching DESIGN.md, and content sits in a 1280px container with 24px gutters
 
@@ -324,22 +324,22 @@ So that the shell exists for every screen and failures never leave me guessing.
 
 **Given** the Login screen
 **When** I submit valid credentials
-**Then** `core/auth/session.store.ts` holds the token in memory, the toolbar shows the product name, Meetings and Actions links with active state, and a user menu with my display name, role, and "Sign out", and `core/users/users.store.ts` loads the roster once
+**Then** `Core/Auth/SessionState.cs` holds the token in memory, the toolbar shows the product name, Meetings and Actions links with active state, and a user menu with my display name, role, and "Sign out", and `Core/Users/UserDirectory.cs` loads the roster once
 **And** on 401 the form shows "Sign-in failed. Check your username and password."
 
-**Given** an HTTP interceptor and the shell
+**Given** a `DelegatingHandler` on the generated client's `HttpClient` and the shell
 **When** any request runs
-**Then** a `mat-progress-bar` under the toolbar shows during loads; a failed load shows "Couldn't load. {problem title}" with Retry; an unmatched or 404 detail route shows a Not found page with a link to the parent list; 403 shows the snackbar "Your role does not allow this."; 401 redirects to Login with "Session expired. Sign in again." and restores the attempted route; a failed write shows the problem title with Retry and keeps form values; write buttons disable while in flight
+**Then** a `MudProgressLinear` under the toolbar shows during loads; a failed load shows "Couldn't load. {problem title}" with Retry; an unmatched or 404 detail route shows a Not found page with a link to the parent list; 403 shows the `ISnackbar` message "Your role does not allow this."; 401 redirects to Login with "Session expired. Sign in again." and restores the attempted route; a failed write shows the problem title with Retry and keeps form values; write buttons disable while in flight
 
-**Given** shared date and instant pipes and a voice constants file
+**Given** shared date and instant formatters and a voice constants file
 **When** any screen renders a date or instant
 **Then** dates render `YYYY-MM-DD`, instants `YYYY-MM-DD HH:mm UTC`, no relative time appears, and Voice and Tone strings are used verbatim
-**And** the login container, session store, and interceptor have `*.spec.ts` with the generated client mocked
+**And** the login page component, `SessionState`, and the delegating handler have bUnit tests in `tests/Web.Tests` with the generated client mocked
 
 ### Story 1.7: One-command compose environment with migrate, api, and web
 
 As an interview panelist,
-I want `docker compose up` from a clean clone to give me a working login page with no host .NET or Node,
+I want `docker compose up` from a clean clone to give me a working login page with no host .NET toolchain,
 So that the demo starts from nothing on any machine.
 
 **Requirements:** FR36 (skeleton); NFR1 (proxy timeouts), NFR10, NFR11. **UX:** none.
@@ -398,16 +398,16 @@ So that I can start the extraction flow from the screen.
 
 **Given** the Meeting List at `/meetings`
 **When** it loads
-**Then** a Material table shows Title, Date, Runs, Tracked Actions sorted by Meeting date descending, a row click or Enter opens Meeting Detail, and a paginator appears at 50 rows
+**Then** a `MudTable` shows Title, Date, Runs, Tracked Actions sorted by Meeting date descending, a row click or Enter opens Meeting Detail, and a paginator appears at 50 rows
 
 **Given** I click "New meeting"
-**When** I complete the dialog
-**Then** Title (required, max 200), Date (required), and Attendees chip input (each max 100) validate with messages under each field, and "Create" opens Meeting Detail
+**When** I complete the `IDialogService` dialog
+**Then** Title (required, max 200), Date (required), and Attendees chip input (a `MudChipSet` fed by a `MudTextField`, each max 100) validate with messages under each field, and "Create" opens Meeting Detail
 
 **Given** Meeting Detail without notes
 **When** I paste notes
 **Then** the textarea shows a live count against 50,000, the caption "Notes cannot be changed after saving", and "Save notes" (enabled only when non-empty) confirms in a dialog with the same sentence; after save the notes render read-only with `white-space: pre-wrap` and "Saved {timestamp} UTC, immutable", with no edit affordance
-**And** the meetings container and data service have `*.spec.ts`
+**And** the meetings page component and its data service have bUnit tests in `tests/Web.Tests`
 
 ### Story 2.3: Fixture catalog and prompt v1 (Saturday evening)
 
@@ -488,13 +488,13 @@ So that I know what produced the proposals before I review them.
 
 **Given** Meeting Detail with notes
 **When** I click "Run extraction"
-**Then** the button disables, a progress bar shows with "Extracting with {provider} · {model}. This can take up to a minute with a local model." (provider and model from `GET /api/v1/ai/provider`, which this story adds returning `{ provider, model }` from `IAiProviderInfo`), nothing else is blocked, and on success the app navigates to Run Detail for the new run (Story 3.4 changes the target to the Review Screen)
+**Then** the button disables, a `MudProgressLinear` shows with "Extracting with {provider} · {model}. This can take up to a minute with a local model." (provider and model from `GET /api/v1/ai/provider`, which this story adds returning `{ provider, model }` from `IAiProviderInfo`), nothing else is blocked, and on success the app navigates to Run Detail for the new run (Story 3.4 changes the target to the Review Screen)
 **And** on failure the run appears in the run list as Failed with the server-supplied reason
 
-**Given** the run list (`mat-table`: started, Prompt Version, provider and model, outcome, proposal count, Pending count) and Run Detail
+**Given** the run list (`MudTable`: started, Prompt Version, provider and model, outcome, proposal count, Pending count) and Run Detail
 **When** I open a run
 **Then** the metadata definition list shows every FR6 field with tokens rendered as "0" never blank and warnings expandable to the dropped excerpts; a Failed run shows its failure reason verbatim and a "Run again" button; proposal rows appear in AI order with a `ReviewStateChip`, decider display name, timestamp, and rejection reason as visible text (empty until Epic 3)
-**And** the run detail container and data service have `*.spec.ts`
+**And** the run detail page component and its data service have bUnit tests in `tests/Web.Tests`
 
 ### Story 2.7: Real providers through the same seam: LM Studio, Ollama, and Azure OpenAI (Monday morning)
 
@@ -591,7 +591,7 @@ So that I can judge every proposal in context.
 **Given** shared `ProvenanceChip`, `LowConfidenceBadge`, `ReviewStateChip`, and `PendingCounter` components and the `ProposalCard` component
 **When** I open `/meetings/:id/runs/:runId/review` at 1200px or wider
 **Then** the notes pane (min 360px, `white-space: pre-wrap`) sits left and the cards right in AI return order with independent scroll; each Pending card shows "Proposed by AI", the Confidence Score in Roboto Mono, the Low Confidence badge and 4px left border when `isLowConfidence`, read-only description, owner with the always-visible hint "AI suggested: {text}" ("Unassigned" and "AI suggested: none" when empty, "No due date proposed" when null), the Source Excerpt blockquote, and Reject, Edit, Approve controls
-**And** between 1024 and 1199px the notes pane becomes a collapsed expansion panel above the cards; a run with zero proposals shows "The AI found no actions in these notes." with "Run again" and "Back to meeting"; Story 2.6's post-run navigation now targets this route
+**And** between 1024 and 1199px the notes pane becomes a collapsed `MudExpansionPanels` above the cards; a run with zero proposals shows "The AI found no actions in these notes." with "Run again" and "Back to meeting"; Story 2.6's post-run navigation now targets this route
 
 **Given** a card is focused or hovered, or its blockquote is clicked
 **When** the highlight applies
@@ -614,19 +614,19 @@ So that nothing the AI said becomes a record without my hand on it.
 
 **Given** I click Edit on a Pending card
 **When** the card enters edit mode
-**Then** description becomes a text field, owner a select of the users store plus Unassigned pre-selected from `suggestedOwnerUserId`, due date a date picker with a clear button, and the action row becomes Cancel and "Approve" or "Approve with edits" with the label driven by a diff against the proposed values; Cancel restores the proposed values
+**Then** description becomes a `MudTextField`, owner a `MudSelect` over the `UserDirectory` roster plus Unassigned pre-selected from `suggestedOwnerUserId`, due date a `MudDatePicker` with a clear button, and the action row becomes Cancel and "Approve" or "Approve with edits" with the label driven by a diff against the proposed values; Cancel restores the proposed values
 
 **Given** I click Reject
-**When** the dialog opens
+**When** the `IDialogService` dialog opens
 **Then** it offers an optional reason and a Reject confirm
 
 **Given** I approve, approve with edits, or reject
 **When** the response returns
-**Then** the card re-renders in its decided state per Story 3.4, the Pending counter updates inside an `aria-live` region, the write button was disabled while in flight, and a 409 shows "Already changed. Reloading." and refreshes the run
+**Then** the card re-renders in its decided state per Story 3.4, the Pending counter updates inside an `aria-live` region, the write button was disabled while in flight, and a 409 shows the `ISnackbar` message "Already changed. Reloading." and refreshes the run
 
 **Given** the Review Screen
 **When** the manual keyboard pass and browser axe scan run
-**Then** every control is reachable and named, no indicator relies on color alone, the results are recorded in the pull request checklist, and the review container and data service have `*.spec.ts`
+**Then** every control is reachable and named, no indicator relies on color alone, the results are recorded in the pull request checklist, and the review page component and its data service have bUnit tests in `tests/Web.Tests`
 
 ## Epic 4: Track, filter, and audit actions (Monday)
 
@@ -682,16 +682,16 @@ So that one screen answers what is slipping and who owns it.
 
 **Given** shared `StatusChip` and `OverdueIndicator` components and the `actions` feature
 **When** I open `/actions`
-**Then** a Material table at density -1 shows Description, Owner or "Unassigned", Due date, Status chip, Meeting, and the Overdue indicator (icon plus "Overdue") driven only by `isOverdue`; Due date and Status headers are sortable and drive `sort` and `dir`; default sort is due date ascending; the table pages at 50 with a paginator
+**Then** a `MudTable` with `Dense` shows Description, Owner or "Unassigned", Due date, Status chip, Meeting, and the Overdue indicator (icon plus "Overdue") driven only by `isOverdue`; Due date and Status headers are sortable and drive `sort` and `dir`; default sort is due date ascending; the table pages at 50 with a paginator
 
-**Given** the filter bar (Owner select with Unassigned from the users store, Status multi-select, Due date range, Meeting select, "Overdue only" toggle)
+**Given** the filter bar (a `MudSelect` for Owner with Unassigned from `UserDirectory`, a multi-select `MudSelect` for Status, a `MudDateRangePicker` for the due date range, a `MudSelect` for Meeting, an "Overdue only" toggle)
 **When** I change any filter
 **Then** the list reloads immediately, the query string reflects every filter so the view can be linked, "Clear filters" appears, and no matches shows "No actions match these filters." with "Clear filters"
 
 **Given** a row
 **When** I click it or press Enter on it
 **Then** the app navigates to `/actions/:id` (the route lands in Story 4.4)
-**And** the manual keyboard pass and axe scan are recorded in the pull request checklist, and the actions container and data service have `*.spec.ts`
+**And** the manual keyboard pass and axe scan are recorded in the pull request checklist, and the actions page component and its data service have bUnit tests in `tests/Web.Tests`
 
 ### Story 4.4: Action Detail with the Audit Trail
 
@@ -707,7 +707,7 @@ So that I can see who decided what and when.
 **When** I open `/actions/:id`
 **Then** the header shows the fields, owner, status chip, Overdue indicator, "Created from AI proposal, run {Prompt Version}" linking to Run Detail, and last-changed-by name
 **And** the `AuditEntry` timeline shows oldest first the purple AI entry with all five proposed fields and the Low Confidence badge when applicable, then blue human entries with display names, with "Was / Now" columns for field changes, never collapsed
-**And** the audit container and data service have `*.spec.ts`
+**And** the audit page component and its data service have bUnit tests in `tests/Web.Tests`
 
 ### Story 4.5: Status control and inline edit on Action Detail (first P0 cut)
 
@@ -719,14 +719,14 @@ So that I can act on what I find.
 
 **Acceptance Criteria:**
 
-**Given** the Status control
+**Given** the Status control as a `MudSelect`
 **When** I open it as an ActionOfficer
-**Then** it lists only allowed transitions, shows Cancelled disabled with the caption "Lead only", applies Open and In Progress transitions on select with the snackbar "Status set to {status}" and an Undo that performs the reverse, and confirms Complete and Cancelled with "Set to {status}? This cannot be reopened." with no Undo; as a Lead, Cancelled is enabled
+**Then** it lists only allowed transitions, shows Cancelled disabled with the caption "Lead only", applies Open and In Progress transitions on select with the `ISnackbar` message "Status set to {status}" and an Undo that performs the reverse, and confirms Complete and Cancelled in an `IDialogService` dialog with "Set to {status}? This cannot be reopened." with no Undo; as a Lead, Cancelled is enabled
 **And** on Complete or Cancelled the control and the edit fields disable with "{Status} actions cannot be edited"
 
 **Given** the inline edit fields with Save and Cancel
 **When** I save a change
-**Then** the field updates, a new FieldEdit entry appears in the trail, and a 409 shows "Already changed. Reloading."
+**Then** the field updates, a new FieldEdit entry appears in the trail, and a 409 shows the `ISnackbar` message "Already changed. Reloading."
 
 ## Epic 5: Deliver approved actions to other systems (Monday)
 
@@ -884,7 +884,7 @@ So that I can walk the methodology from the repository alone.
 
 **Given** `docs/`
 **When** this story merges
-**Then** it contains `bmad-seed-prompt.md`, `brief.md`, `prd.md`, `prd-addendum.md`, `architecture.md`, `adrs/ADR-001` to `ADR-007`, `stories/epics.md`, `frontend-architecture.md` with the MVVM mapping diagram, and `webhooks.md`
+**Then** it contains `bmad-seed-prompt.md`, `brief.md`, `prd.md`, `prd-addendum.md`, `architecture.md`, `adrs/ADR-001` to `ADR-007`, `stories/epics.md`, `frontend-architecture.md` with the Blazor mapping diagram, and `webhooks.md`
 
 **Given** all P0 stories are merged with green checks
 **When** I tag `v1.0.0` by end of day 2026-09-21
@@ -920,7 +920,7 @@ So that I get the state of play at a glance.
 
 **Given** `GET /api/v1/tracked-actions/summary` added to the committed `openapi.json`
 **When** I open the dashboard
-**Then** three tiles show the counts and each links to the Action List with the matching filters in the URL
+**Then** three `MudCard` tiles show the counts and each links to the Action List with the matching filters in the URL
 
 ### Story 7.3: AI-drafted follow-up email reviewed before export
 
