@@ -3,7 +3,10 @@
 # Seed the ActionLedger Project board: one issue per story in epics.md, each added to the
 # board. Idempotent — a second run creates nothing and reports what it found.
 #
-#   tools/seed-project-board.sh [--dry-run]
+#   tools/seed-project-board.sh [--dry-run] [--no-board]
+#
+# --no-board creates the issues and labels only, skipping the Projects v2 board. Useful when the
+# token carries `repo` but not `project`; re-run without the flag later to attach the board.
 #
 # Requires the gh CLI, authenticated with the `repo` and `project` scopes:
 #
@@ -25,11 +28,14 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EPICS_FILE="${EPICS_FILE:-$repo_root/_bmad-output/planning-artifacts/epics.md}"
 
 DRY_RUN=false
-case "${1:-}" in
-  --dry-run) DRY_RUN=true ;;
-  "") ;;
-  *) echo "usage: $(basename "$0") [--dry-run]" >&2; exit 2 ;;
-esac
+NO_BOARD=false
+for arg in "$@"; do
+  case "$arg" in
+    --dry-run) DRY_RUN=true ;;
+    --no-board) NO_BOARD=true ;;
+    *) echo "usage: $(basename "$0") [--dry-run] [--no-board]" >&2; exit 2 ;;
+  esac
+done
 
 say()  { printf '%s\n' "$*"; }
 step() { printf '\n== %s\n' "$*"; }
@@ -44,8 +50,10 @@ command -v gh >/dev/null 2>&1 || { echo "gh is not installed. See https://cli.gi
 
 gh auth status >/dev/null 2>&1 || { echo "gh is not authenticated. Run: gh auth login" >&2; exit 1; }
 
-if ! gh auth status 2>&1 | grep -q 'project'; then
-  echo "The gh token is missing the Project scope. Run: gh auth refresh --scopes project,read:project" >&2
+# Issues need only `repo`; the Projects v2 board needs `project`. --no-board skips that half.
+if ! $NO_BOARD && ! gh project list --owner "$OWNER" --limit 1 >/dev/null 2>&1; then
+  echo "The gh token cannot reach Projects v2. Run: gh auth refresh --scopes project,read:project" >&2
+  echo "Or run with --no-board to create the issues only." >&2
   exit 1
 fi
 
@@ -108,6 +116,10 @@ done
 
 step "Project board"
 
+if $NO_BOARD; then
+  say "   skipped (--no-board); issues are created without board items"
+  project_number=""
+else
 project_number="$(
   gh project list --owner "$OWNER" --limit 100 --format json \
     --jq '.projects[] | [.number, .title] | @tsv' 2>/dev/null |
@@ -124,6 +136,7 @@ else
     gh project create --owner "$OWNER" --title "$PROJECT_TITLE" --format json --jq '.number'
   )"
   say "   created project #$project_number \"$PROJECT_TITLE\""
+fi
 fi
 
 # ---------------------------------------------------------------------------------------------
