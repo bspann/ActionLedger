@@ -1,12 +1,17 @@
 # syntax=docker/dockerfile:1
 
-# The api image, built from the repository root:
+# The migrate image, built from the repository root:
 #
-#   docker build -f src/ActionLedger.Api/Dockerfile .
+#   docker build -f src/ActionLedger.Api/Dockerfile.migrate .
 #
-# AD-17 — the api never migrates at startup. Schema ships only through the EF migration bundle,
-# and this is where the bundle is produced: `migrate` and the CD step both run the executable
-# this build copies out of the final image.
+# AD-17 — `migrate` has its own Dockerfile, and the bundle is produced in the api multi-stage
+# build. Docker cannot `COPY --from` a stage that lives in another file, so the `build` and
+# `bundle` stages below are byte-identical copies of the ones in `Dockerfile`. Identical
+# instructions over an identical context hit the same layer cache, so the duplication costs
+# nothing at build time and buys both images being independently buildable from one commit —
+# which is the property AD-17 actually wants: a schema and the code that expects it at one SHA.
+#
+# Anything edited here must be edited in `Dockerfile` in the same commit, or the cache splits.
 
 # --- build ---------------------------------------------------------------------------------------
 # Pinned to the exact patch, not the floating `10.0` tag: global.json asks for 10.0.401 with
@@ -29,10 +34,6 @@ RUN dotnet restore src/ActionLedger.Api/ActionLedger.Api.csproj
 COPY src/ src/
 
 RUN dotnet build src/ActionLedger.Api/ActionLedger.Api.csproj -c Release --no-restore
-
-# --- publish -------------------------------------------------------------------------------------
-FROM build AS publish
-RUN dotnet publish src/ActionLedger.Api/ActionLedger.Api.csproj -c Release --no-build -o /app/publish
 
 # --- migration bundle ----------------------------------------------------------------------------
 # `dotnet ef` builds the model, which means constructing AppDbContext, which means a connection
@@ -58,22 +59,17 @@ WORKDIR /app
 # Npgsql probes for GSSAPI on every connection. Without it the connection still succeeds, but
 # the probe writes "Cannot load library libgssapi_krb5.so.2" to stderr — which, in front of a
 # `docker compose up`, reads exactly like the migration failing. One small package, no noise.
-#
-# curl is the other one: aspnet:10.0 is Debian slim and ships neither curl nor wget, so the
-# `/health` healthcheck AD-17 mandates on the `api` service would have no binary to run.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgssapi-krb5-2 curl \
+ && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
  && rm -rf /var/lib/apt/lists/*
 
-ENV ASPNETCORE_HTTP_PORTS=8080
-EXPOSE 8080
-
-COPY --from=publish /app/publish ./
-# The bundle rides along in the api image so `migrate` and `api` are one artefact at one SHA —
-# a schema and the code that expects it can never be a version apart.
+# The bundle and nothing else. No application assemblies: this container's whole job is to apply
+# the schema and exit, and `api` will not start until it has exited 0.
 COPY --from=bundle /app/migrate/ /app/migrate/
 
 # Runs as the non-root user the .NET base images define.
 USER $APP_UID
 
-ENTRYPOINT ["dotnet", "ActionLedger.Api.dll"]
+# The connection string arrives as `--connection <value>` from the compose `command`, so nothing
+# here carries a credential.
+ENTRYPOINT ["/app/migrate/efbundle"]
