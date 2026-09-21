@@ -2,7 +2,7 @@
 title: 'Story 1.1 — Green pipeline on an empty Clean Architecture solution'
 type: 'chore'
 created: '2026-09-20'
-status: 'in-progress'
+status: 'review'
 route: 'dispatch'
 baseline_commit: 'NO_VCS' # no git repository existed at baseline
 review_loop_iteration: 0
@@ -58,18 +58,18 @@ Greenfield — nothing to reuse, nothing to avoid breaking. Authoritative source
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `git init` + `.gitignore` -- initialize the repo on `main`, standard VisualStudio + Node ignores, plus `web/actionledger-web/src/app/core/api/` -- every later story merges through a PR here
-- [ ] `global.json` -- pin SDK `10.0.401` with `rollForward: disable`; install it first -- clean clone and CI must agree on the toolchain
-- [ ] `Directory.Build.props` -- `net10.0`, `nullable enable`, `ImplicitUsings enable`, `TreatWarningsAsErrors`, `LangVersion latest` -- one place sets the compiler contract
-- [ ] `Directory.Packages.props` -- central package management with the spine's exact versions -- version drift is a licensing and reproducibility risk
-- [ ] `ActionLedger.sln` + `src/ActionLedger.{Domain,Application,Infrastructure,Api}` -- four rings, project references inward only, Domain with zero PackageReferences -- AD-1
-- [ ] `tests/{Domain,Application,Infrastructure,Api}.Tests`, `tests/Architecture.Tests`, `tests/Eval`, `tests/Web.E2E` -- seven xunit.v3 4.0.1 projects, each with one passing placeholder so `dotnet test` is meaningful -- AD-18
-- [ ] `tests/Architecture.Tests/DependencyRuleTests.cs` -- NetArchTest.eNhancedEdition 1.4.5 asserting all six AD-1 rules against the real assemblies -- the dependency rule is enforced by the build, not by discipline
-- [ ] `.github/workflows/ci.yml` -- restore, build, `dotnet test` across all projects, on PR and `main` -- the required check
-- [ ] `.github/workflows/codeql.yml` + `.github/dependabot.yml` -- C# (and later npm) scanning and update PRs -- NFR5
-- [ ] `.github/pull_request_template.md` -- checklist: issue link, tests added, license review, axe pass for UI stories -- the spine's Branching row
-- [ ] `.github/workflows/require-linked-issue.yml` -- required check asserting the PR body links an issue -- branch protection cannot require issue linkage natively
-- [ ] `tools/seed-project-board.sh` -- write the `gh` script that creates the Project board and one issue per story parsed from `epics.md`, idempotent on re-run; **write it only, do not run it** -- AC 4
+- [x] `git init` + `.gitignore` -- initialize the repo on `main`, standard VisualStudio + Node ignores, plus `web/actionledger-web/src/app/core/api/` -- every later story merges through a PR here
+- [x] `global.json` -- pin SDK `10.0.401` with `rollForward: disable`; install it first -- clean clone and CI must agree on the toolchain
+- [x] `Directory.Build.props` -- `net10.0`, `nullable enable`, `ImplicitUsings enable`, `TreatWarningsAsErrors`, `LangVersion latest` -- one place sets the compiler contract
+- [x] `Directory.Packages.props` -- central package management with the spine's exact versions -- version drift is a licensing and reproducibility risk
+- [x] `ActionLedger.sln` + `src/ActionLedger.{Domain,Application,Infrastructure,Api}` -- four rings, project references inward only, Domain with zero PackageReferences -- AD-1
+- [x] `tests/{Domain,Application,Infrastructure,Api}.Tests`, `tests/Architecture.Tests`, `tests/Eval`, `tests/Web.E2E` -- seven xunit.v3 4.0.1 projects, each with one passing placeholder so `dotnet test` is meaningful -- AD-18
+- [x] `tests/Architecture.Tests/DependencyRuleTests.cs` -- NetArchTest.eNhancedEdition 1.4.5 asserting all six AD-1 rules against the real assemblies -- the dependency rule is enforced by the build, not by discipline
+- [x] `.github/workflows/ci.yml` -- restore, build, `dotnet test` across all projects, on PR and `main` -- the required check
+- [x] `.github/workflows/codeql.yml` + `.github/dependabot.yml` -- C# (and later npm) scanning and update PRs -- NFR5
+- [x] `.github/pull_request_template.md` -- checklist: issue link, tests added, license review, axe pass for UI stories -- the spine's Branching row
+- [x] `.github/workflows/require-linked-issue.yml` -- required check asserting the PR body links an issue -- branch protection cannot require issue linkage natively
+- [x] `tools/seed-project-board.sh` -- write the `gh` script that creates the Project board and one issue per story parsed from `epics.md`, idempotent on re-run; **write it only, do not run it** -- AC 4
 **Landing (NOT part of implementation — the orchestrator runs these after review, with the human present):**
 - [ ] create `bspann/ActionLedger` public on GitHub, push `main` -- AC 3
 - [ ] enable secret scanning and push protection -- NFR5
@@ -86,7 +86,24 @@ Greenfield — nothing to reuse, nothing to avoid breaking. Authoritative source
 
 ## Implementation Notes
 
+**All seven test projects run under Microsoft.Testing.Platform, not VSTest.** xunit.v3 4.0.1 on the .NET 10 SDK refuses to run under the VSTest path (`Testing with VSTest target is no longer supported by Microsoft.Testing.Platform on .NET 10 SDK and later`). The opt-in is `"test": { "runner": "Microsoft.Testing.Platform" }` in `global.json`. Consequence: `Microsoft.NET.Test.Sdk` and `xunit.runner.visualstudio` are deliberately absent — MTP mode requires that no test project use VSTest, and xunit.v3 test projects are self-executing MTP applications. `Directory.Packages.props` therefore pins two packages, not four.
+
+**`Api` is a web project with an empty host.** `src/ActionLedger.Api` uses `Microsoft.NET.Sdk.Web` and a three-line `Program.cs` that builds and runs a host with no routes. Two reasons: AD-1's rule that Domain and Application never reference ASP.NET Core is only meaningful asserted against a graph where ASP.NET Core actually exists, and Story 1.2 then extends the project rather than converting it. No controllers, no auth, no OpenAPI — those are 1.2.
+
+**Each ring carries an assembly marker.** `DomainAssemblyMarker` and its three siblings are empty public classes. They give the architecture tests and the ring test projects a compile-time handle on the real compiled assembly, and they keep NetArchTest's type queries non-vacuous while the rings hold no code.
+
+**AD-1 is asserted two ways, and it has to be.** Roslyn prunes unused assembly references out of the metadata it emits, so a `PackageReference` added to Domain but not yet called is invisible to every assembly-level check — including NetArchTest. The I/O matrix row "Domain takes a package | Any PackageReference in Domain | Architecture test fails" therefore cannot be satisfied by NetArchTest alone. `DependencyRuleTests` pairs each NetArchTest rule with a scan of the project files (`ProjectFile.cs`), which also folds in any `Directory.Build.props` between the repository root and the ring, so a package smuggled into a shared props file still counts against the ring that carries it.
+
+**The story is on a `chore/` branch, not on `main`.** `main` holds one bootstrap commit (`.gitignore` plus the planning artifacts); everything else is on `chore/1-1-green-pipeline`. That gives the landing step a real pull request with real content and real checks, per the Branching convention, rather than a pull request with nothing in it. If the orchestrator would rather have it all on `main`, it is a fast-forward merge.
+
+**The BMAD skill mirrors are git-ignored.** `.agents/` and `.claude/skills/` are two identical 13 MB installer-generated copies of the skill library, and `_bmad/config.user.toml` holds per-person install answers. `_bmad/` config, `_bmad-output/` artifacts, and `docs/` are tracked — the board script reads `epics.md` from `_bmad-output/` at landing time.
+
 ## Spec Change Log
+
+- **Testing packages.** The spec's Execution list implies the usual xunit test-project triple. Only `xunit.v3` 4.0.1 is present; `Microsoft.NET.Test.Sdk` and `xunit.runner.visualstudio` are omitted because MTP mode rejects a solution where any test project uses VSTest. Both omitted packages are outside the spine's Stack table, so no pinned version was dropped.
+- **`Api` project type.** Not specified either way in the spec. Implemented as `Microsoft.NET.Sdk.Web` with an empty host rather than a class library.
+- **`ProjectFile.cs` alongside `DependencyRuleTests.cs`.** The spec names one file for the architecture rules. The project-file reader is a second file in the same project, because the I/O matrix demands a check NetArchTest cannot perform.
+- **Branch layout.** The spec's landing list says "push `main`" and "open the pull request"; the work is staged on `chore/1-1-green-pipeline` so both are possible.
 
 ## Review Triage Log
 
@@ -104,11 +121,31 @@ Greenfield — nothing to reuse, nothing to avoid breaking. Authoritative source
 
 ## Verification
 
-**Commands:**
-- `export PATH="$HOME/.dotnet:$PATH" && export DOTNET_ROOT="$HOME/.dotnet"` -- expected: `dotnet --version` prints `10.0.401`
-- `dotnet build ActionLedger.sln` -- expected: succeeds, zero warnings (warnings are errors)
-- `dotnet test ActionLedger.sln` -- expected: all seven test projects pass
-- `dotnet test tests/Architecture.Tests` -- expected: every AD-1 rule reports zero violations
-- `gh pr checks` -- expected: `ci.yml` and the linked-issue check both green
-- `gh api repos/{owner}/ActionLedger/branches/main/protection --jq '.required_status_checks.contexts'` -- expected: lists both required checks
-- `gh issue list --limit 100 --json number --jq 'length'` -- expected: 35
+**Run on 2026-09-20 against the working tree, SDK 10.0.401 at `~/.dotnet`.**
+
+| Command | Expected | Result |
+|---------|----------|--------|
+| `dotnet --version` | `10.0.401` | `10.0.401` |
+| `dotnet build ActionLedger.sln` | succeeds, zero warnings | Build succeeded, 0 Warning(s), 0 Error(s) |
+| `dotnet test ActionLedger.sln` | all seven test projects pass | Passed — 7 projects, 19 tests, 0 failed |
+| `dotnet test tests/Architecture.Tests` | every AD-1 rule reports zero violations | 13 tests, 0 failed |
+| clean clone, `dotnet build` then `dotnet test` | both succeed | verified in a fresh `git clone` of the branch |
+
+**The AD-1 rules were verified red, then reverted.** Each violation was introduced, observed to fail, and removed:
+
+| Violation introduced | Test that failed |
+|---------------------|------------------|
+| `PackageReference` on Domain | `Rule1_domain_declares_no_package_and_no_project_reference`, `Rule3_inner_rings_declare_no_persistence_web_or_ai_package(Domain)` |
+| Domain type using `Npgsql.NpgsqlConnection` | `Rule3_inner_ring_types_never_touch_persistence_web_or_ai`, naming the offending type |
+| Type named `TempTextNormalizer` in Domain | `Rule5_normalization_types_live_only_in_application_ai` |
+| `PackageReference` on Application outside the allowlist | `Rule2_application_takes_no_package_outside_the_allowlist`, `Rule3_inner_rings_declare_no_persistence_web_or_ai_package(Application)` |
+| Extra `ProjectReference` on Infrastructure | `Rule6_infrastructure_references_application_and_domain_only` |
+
+Rule 4 (nothing references Api) and the inward `ProjectReference` forms of rules 1, 2, and 6 cannot be violated in a real project file without creating a reference cycle, which MSBuild rejects before the tests run. They are belt-and-braces over a rule the build already enforces, and they go red for a *type-level* violation, which the build does not catch.
+
+**Not verified here — these run at landing, with a human present:**
+
+- `gh pr checks` — `ci.yml` and `require-linked-issue` both green
+- `gh api repos/{owner}/ActionLedger/branches/main/protection --jq '.required_status_checks.contexts'` — lists both required checks
+- `gh issue list --limit 100 --json number --jq 'length'` — 35
+- `tools/seed-project-board.sh` — syntax-checked (`bash -n`) and its `epics.md` parse verified to yield exactly 35 stories with the right epic on each; the `gh` calls themselves are unexercised until the repository exists.
