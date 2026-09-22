@@ -1,4 +1,5 @@
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Domain.Actions;
 using ActionLedger.Domain.Extraction;
 using ActionLedger.Domain.Meetings;
 
@@ -29,11 +30,13 @@ public sealed class MeetingsQueries(IReadDb readDb)
 
         IQueryable<Meeting> meetings = readDb.Query<Meeting>();
 
-        // Hoisted out of the projection on purpose. Composing the correlated count below against
-        // this local is translatable; calling readDb.Query<ExtractionRun>() *inside* the Select
-        // would put a method call on a captured object into the expression tree, which EF cannot
-        // translate and would answer with a client-evaluation failure at runtime.
+        // Hoisted out of the projection on purpose. Composing the correlated counts below against
+        // these locals is translatable; calling readDb.Query<T>() *inside* the Select would put a
+        // method call on a captured object into the expression tree, which EF cannot translate
+        // and would answer with a client-evaluation failure at runtime.
         IQueryable<ExtractionRun> runs = readDb.Query<ExtractionRun>();
+        IQueryable<ProposedAction> proposals = readDb.Query<ProposedAction>();
+        IQueryable<TrackedAction> trackedActions = readDb.Query<TrackedAction>();
 
         // Counted before the window is applied, so `total` is every matching row rather than the
         // length of this page (Consistency Conventions, Paging row).
@@ -57,15 +60,18 @@ public sealed class MeetingsQueries(IReadDb readDb)
             // Narrowing is safe: offset < total, and total is an int.
             .Skip((int)offset)
             .Take(normalizedPageSize)
-            // The run count is a correlated subquery rather than a join, so a Meeting with no runs
-            // still appears, with 0. The tracked-action count has no source table yet: Story 3.1
-            // replaces that last literal, and the published shape does not move when it does.
+            // Both counts are correlated subqueries rather than joins, so a Meeting with no runs
+            // still appears, with 0 for each. A Tracked Action reaches its Meeting only through
+            // the proposal it was decided from and that proposal's run, so its count walks that
+            // chain rather than any column of its own.
             .Select(meeting => new MeetingSummaryDto(
                 meeting.Id,
                 meeting.Title,
                 meeting.MeetingDate,
                 runs.Count(run => run.MeetingId == meeting.Id),
-                0));
+                trackedActions.Count(action => proposals.Any(proposal =>
+                    proposal.Id == action.ProposedActionId
+                    && runs.Any(run => run.Id == proposal.ExtractionRunId && run.MeetingId == meeting.Id)))));
 
         IReadOnlyList<MeetingSummaryDto> items = await readDb.ToListAsync(window, cancellationToken);
 

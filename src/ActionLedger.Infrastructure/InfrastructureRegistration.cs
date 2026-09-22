@@ -51,6 +51,7 @@ public static class InfrastructureRegistration
         services.AddScoped<IMeetingRepository, MeetingRepository>();
         services.AddScoped<IExtractionRunRepository, ExtractionRunRepository>();
         services.AddScoped<IActionRevisionRepository, ActionRevisionRepository>();
+        services.AddScoped<IActionRepository, ActionRepository>();
         services.AddScoped<IReadDb, ReadDb>();
         services.AddScoped<SeedRepository>();
         services.AddScoped<DatabaseReadiness>();

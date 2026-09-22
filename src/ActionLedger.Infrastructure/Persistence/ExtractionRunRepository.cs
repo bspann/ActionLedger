@@ -26,4 +26,13 @@ internal sealed class ExtractionRunRepository(AppDbContext context) : IExtractio
             // side, so the first caller to trust the aggregate's list gets what it documents.
             .Include(run => run.Proposals.OrderBy(proposal => proposal.Ordinal))
             .FirstOrDefaultAsync(run => run.Id == id, cancellationToken);
+
+    public Task<ExtractionRun?> FindByProposedActionIdAsync(Guid proposedActionId, CancellationToken cancellationToken = default) =>
+        context.ExtractionRuns
+            // The same ordered Include as FindByIdAsync, so a decision sees the aggregate it
+            // documents and the proposal it decides is tracked — its xmin checked at commit.
+            .Include(run => run.Proposals.OrderBy(proposal => proposal.Ordinal))
+            .FirstOrDefaultAsync(
+                run => run.Proposals.Any(proposal => proposal.Id == proposedActionId),
+                cancellationToken);
 }
