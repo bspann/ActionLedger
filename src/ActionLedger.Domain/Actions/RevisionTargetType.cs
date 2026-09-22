@@ -7,13 +7,17 @@ namespace ActionLedger.Domain.Actions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Only <see cref="ProposedAction"/> is written in Story 2.5. <c>TrackedAction</c> arrives with
-/// Story 3.2, which is the story that first writes a revision against one.
+/// <see cref="ProposedAction"/> rows are the AiProposal and ReviewDecision revisions.
+/// <see cref="TrackedAction"/> rows are the FieldEdit revisions a decision writes against the
+/// work it created, and later Epic 4's status changes and edits.
 /// </para>
 /// <para>Stored as a string and serialized as a PascalCase string (Consistency Conventions, Enums row).</para>
 /// </remarks>
 public enum RevisionTargetType
 {
-    /// <summary>A <c>ProposedAction</c> row. The only target this story produces.</summary>
+    /// <summary>A <c>ProposedAction</c> row.</summary>
     ProposedAction,
+
+    /// <summary>A <c>TrackedAction</c> row.</summary>
+    TrackedAction,
 }

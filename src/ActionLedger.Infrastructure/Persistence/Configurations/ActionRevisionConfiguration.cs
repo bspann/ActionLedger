@@ -75,13 +75,14 @@ internal sealed class ActionRevisionConfiguration : IEntityTypeConfiguration<Act
         // Note what that leaves unguarded. AD-7 calls Sequence "strictly increasing per
         // (TargetType, TargetId)", but nothing in the database enforces it. Story 2.5 is safe by
         // construction — an AiProposal revision targets a proposal that was minted in the same
-        // breath, so its sequence is 1 and there is no prior row to collide with. Story 3.2 is
-        // where it becomes reachable: it computes the next sequence from a count read before the
-        // write, and two officers deciding one proposal concurrently would both read the same
-        // count and both write that sequence. What must stop the duplicate there is the AD-20
-        // `xmin` token on ProposedAction, which makes the second decision's commit a 409 before
-        // its revisions land — not this index. If a writer ever appends a revision without
-        // touching a token-carrying row, this index has to become unique on those three columns.
+        // breath, so its sequence is 1 and there is no prior row to collide with. A decision's
+        // sequences are fixed by construction too: ProposedAction.Decide numbers its
+        // ReviewDecision FirstSequence + 1 with no read, because a Pending proposal has exactly its
+        // AiProposal revision. So two officers deciding one proposal concurrently would both write
+        // sequence 2. What stops the duplicate is the AD-20 `xmin` token on ProposedAction, which
+        // makes the second decision's commit a 409 before its revisions land — not this index. If a
+        // writer ever appends a revision without touching a token-carrying row, this index has to
+        // become unique on those three columns.
         builder.HasIndex(revision => new { revision.TargetType, revision.TargetId, revision.Sequence })
             .HasDatabaseName(TargetIndexName);
     }

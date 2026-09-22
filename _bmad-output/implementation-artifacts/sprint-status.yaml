@@ -56,7 +56,7 @@ development_status:
   epic-2-retrospective: optional
 
   epic-3: backlog
-  3-1-decision-domain-model-with-ordered-revisions-and-the-tracked: backlog
+  3-1-decision-domain-model-with-ordered-revisions-and-the-tracked: done
   3-2-decision-endpoint-with-owner-resolution-and-concurrency-safe: backlog
   3-3-transactional-outbox-row-on-every-approval: backlog
   3-4-review-screen-layout-with-proposal-cards-and-source-highligh: backlog

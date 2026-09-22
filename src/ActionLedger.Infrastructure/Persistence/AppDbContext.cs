@@ -44,6 +44,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// </summary>
     public DbSet<ActionRevision> ActionRevisions => Set<ActionRevision>();
 
+    /// <summary>
+    /// The work a human decision created (AD-3, AD-4). Only <c>ProposedAction.Decide</c> mints
+    /// one; this set is how a repository adds it and a query reads it.
+    /// </summary>
+    public DbSet<TrackedAction> TrackedActions => Set<TrackedAction>();
+
     /// <inheritdoc />
     /// <remarks>
     /// Translation lives here rather than in <c>UnitOfWork</c> so every save path is covered —
@@ -72,8 +78,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // AD-20 puts a `xmin` concurrency token on ProposedAction, TrackedAction, Meeting, and
         // OutboxMessage — the four roots with a state machine. `User` is not one of them and does
         // not get one, and neither does `ExtractionRun`: it is inserted once and never updated.
-        // `Meeting` and `ProposedAction` now have theirs, set by their own configurations;
-        // TrackedAction and OutboxMessage arrive with their epics and set theirs the same way:
+        // `Meeting`, `ProposedAction` and `TrackedAction` now have theirs, set by their own
+        // configurations; OutboxMessage arrives with its story and sets its own the same way:
         //
         //     builder.Property<uint>("xmin").IsRowVersion();
         //

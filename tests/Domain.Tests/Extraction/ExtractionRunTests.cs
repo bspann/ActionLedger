@@ -607,8 +607,8 @@ public sealed class ExtractionRunTests
         // would eventually find it. An allowlist over what ProposedAction itself declares, rather
         // than a filter on member names — a method called Reword writes Description just as well
         // as one whose name says so, and a name filter would wave it through. ReviewState's own
-        // setter stays private too: Story 3.2's Decide is the only mutation path AD-3 permits, and
-        // it is a method on the aggregate, not a setter here.
+        // setter stays private too: Decide is the only mutation path AD-3 permits, so it is the one
+        // name the allowlist carries, and it is a method on the aggregate, not a setter here.
         string[] writers =
         [
             .. typeof(ProposedAction)
@@ -618,6 +618,7 @@ public sealed class ExtractionRunTests
             .. typeof(ProposedAction)
                 .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
                 .Where(method => !method.IsSpecialName && method.DeclaringType == typeof(ProposedAction))
+                .Where(method => method.Name != nameof(ProposedAction.Decide))
                 .Select(method => $"{nameof(ProposedAction)}.{method.Name}"),
         ];
 

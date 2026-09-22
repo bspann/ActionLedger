@@ -7,10 +7,11 @@ namespace ActionLedger.Domain.Actions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Only <see cref="AiProposal"/> is written in Story 2.5. <c>ReviewDecision</c> and the first
-/// <c>FieldEdit</c> rows arrive with Story 3.2's <c>ProposedAction.Decide</c>, and
-/// <c>StatusChange</c> with <c>TrackedAction.Transition</c>. The enum gains those members with the
-/// stories that write them, so nothing publishes a state nothing can reach.
+/// <see cref="AiProposal"/> is written by <c>ExtractionRun.AddProposals</c>, and
+/// <see cref="ReviewDecision"/> and <see cref="FieldEdit"/> by Story 3.1's
+/// <c>ProposedAction.Decide</c>. <c>StatusChange</c> arrives with <c>TrackedAction.Transition</c>.
+/// The enum gains those members with the stories that write them, so nothing publishes a state
+/// nothing can reach.
 /// </para>
 /// <para>Stored as a string and serialized as a PascalCase string (Consistency Conventions, Enums row).</para>
 /// </remarks>
@@ -21,4 +22,16 @@ public enum RevisionKind
     /// <c>null</c> actor — the AI is not a User — and the proposal as JSON in the new value.
     /// </summary>
     AiProposal,
+
+    /// <summary>
+    /// A human's decision on a proposal: <c>ReviewState</c> from <c>Pending</c> to the new state,
+    /// with a rejection's reason carried as <c>Rejected: {reason}</c>. Targets the proposal.
+    /// </summary>
+    ReviewDecision,
+
+    /// <summary>
+    /// One field a human changed. <c>ProposedAction.Decide</c> writes one per field an edit
+    /// changed, against the new Tracked Action, after the ReviewDecision.
+    /// </summary>
+    FieldEdit,
 }
