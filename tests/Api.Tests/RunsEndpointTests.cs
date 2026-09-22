@@ -15,8 +15,9 @@ using Xunit;
 namespace ActionLedger.Api.Tests;
 
 /// <summary>
-/// The story's HTTP surface: 201 with a followed <c>Location</c> for Succeeded and Failed alike,
-/// the 400 a meeting with no notes earns, the two 404s, and the full Run Detail read.
+/// The run HTTP surface: 201 with a followed <c>Location</c> for Succeeded and Failed alike,
+/// the 400 a meeting with no notes earns, the 404s, the full Run Detail read, and Meeting Detail's
+/// run list.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -369,12 +370,129 @@ public sealed class RunsEndpointTests
     }
 
     // ---------------------------------------------------------------------------------------
+    // GET meetings/{id}/runs
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task The_run_list_is_newest_first_by_start_time_with_both_counts_per_run()
+    {
+        ExtractedProposal[] three =
+        [
+            .. Kept,
+            new("Send the floor plan.", "Marcus Bell", null, 0.8, "Marcus will send the floor plan."),
+        ];
+
+        // The first run started *later* than the second, so a list ordered by insertion or by the
+        // time-ordered id would put them the other way round. Only StartedAt puts this one first.
+        ExtractionResult succeeded = ExtractionResult.Succeeded(
+            three,
+            [],
+            Metrics with { StartedAt = Metrics.StartedAt.AddMinutes(5) },
+            []);
+
+        ExtractionResult failed = ExtractionResult.Failed("The AI returned invalid output twice.", Metrics);
+
+        ExtractionStore store = new(succeeded, failed);
+        await using TestApi api = new() { ReplaceServices = store.Replace };
+        using HttpClient client = api.CreateClientAs(nameof(Role.Lead));
+
+        Guid meetingId = await MeetingWithNotesAsync(client);
+
+        Guid succeededId = (await ReadAsync(await PostRunAsync(client, meetingId))).GetProperty("id").GetGuid();
+        Guid failedId = (await ReadAsync(await PostRunAsync(client, meetingId))).GetProperty("id").GetGuid();
+
+        HttpResponseMessage response = await client.GetAsync($"{Meetings}/{meetingId}/runs", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        JsonElement[] runs = [.. (await ReadAsync(response)).EnumerateArray()];
+
+        Assert.Equal([succeededId, failedId], runs.Select(run => run.GetProperty("id").GetGuid()));
+
+        JsonElement newest = runs[0];
+
+        Assert.StartsWith("2026-09-22T09:20:42", newest.GetProperty("startedAt").GetString()!, StringComparison.Ordinal);
+        Assert.Equal("v1", newest.GetProperty("promptVersion").GetString());
+        Assert.Equal("Fake", newest.GetProperty("provider").GetString());
+        Assert.Equal("fixture-catalog", newest.GetProperty("model").GetString());
+        Assert.Equal("Succeeded", newest.GetProperty("outcome").GetString());
+        Assert.Equal(JsonValueKind.Null, newest.GetProperty("failureReason").ValueKind);
+        Assert.Equal(3, newest.GetProperty("proposalCount").GetInt32());
+        Assert.Equal(3, newest.GetProperty("pendingCount").GetInt32());
+
+        JsonElement older = runs[1];
+
+        Assert.Equal("Failed", older.GetProperty("outcome").GetString());
+        Assert.Equal("The AI returned invalid output twice.", older.GetProperty("failureReason").GetString());
+        Assert.Equal(0, older.GetProperty("proposalCount").GetInt32());
+        Assert.Equal(0, older.GetProperty("pendingCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_run_list_counts_only_this_meetings_runs()
+    {
+        ExtractionStore store = new(ExtractionResult.Succeeded(Kept, [], Metrics, []));
+        await using TestApi api = new() { ReplaceServices = store.Replace };
+        using HttpClient client = api.CreateClientAs(nameof(Role.ActionOfficer));
+
+        Guid mine = await MeetingWithNotesAsync(client);
+        Guid other = await MeetingWithNotesAsync(client);
+
+        Guid run = (await ReadAsync(await PostRunAsync(client, mine))).GetProperty("id").GetGuid();
+        await PostRunAsync(client, other);
+
+        JsonElement[] runs =
+        [
+            .. (await ReadAsync(await client.GetAsync($"{Meetings}/{mine}/runs", TestContext.Current.CancellationToken)))
+                .EnumerateArray(),
+        ];
+
+        JsonElement single = Assert.Single(runs);
+
+        Assert.Equal(run, single.GetProperty("id").GetGuid());
+        Assert.Equal(Kept.Length, single.GetProperty("proposalCount").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_meeting_with_no_runs_lists_an_empty_array()
+    {
+        ExtractionStore store = new(ExtractionResult.Succeeded(Kept, [], Metrics, []));
+        await using TestApi api = new() { ReplaceServices = store.Replace };
+        using HttpClient client = api.CreateClientAs(nameof(Role.ActionOfficer));
+
+        Guid meetingId = await MeetingAsync(client, "Meeting nobody ran", "2026-09-18");
+
+        HttpResponseMessage response = await client.GetAsync($"{Meetings}/{meetingId}/runs", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        JsonElement body = await ReadAsync(response);
+
+        // An array, not null and not a 404: the meeting is there, it has simply not been run.
+        Assert.Equal(JsonValueKind.Array, body.ValueKind);
+        Assert.Empty(body.EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Listing_the_runs_of_a_meeting_that_does_not_exist_is_a_404_not_found()
+    {
+        ExtractionStore store = new(ExtractionResult.Succeeded(Kept, [], Metrics, []));
+        await using TestApi api = new() { ReplaceServices = store.Replace };
+        using HttpClient client = api.CreateClientAs(nameof(Role.ActionOfficer));
+
+        await AssertNotFoundAsync(await client.GetAsync(
+            $"{Meetings}/{Guid.CreateVersion7()}/runs",
+            TestContext.Current.CancellationToken));
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Authorization
     // ---------------------------------------------------------------------------------------
 
     [Theory]
     [InlineData("POST")]
     [InlineData("GET")]
+    [InlineData("LIST")]
     public async Task An_anonymous_caller_is_401_before_any_meeting_or_run_is_loaded(string method)
     {
         ExtractionStore store = new(ExtractionResult.Succeeded(Kept, [], Metrics, []));
@@ -385,9 +503,12 @@ public sealed class RunsEndpointTests
 
         using HttpClient anonymous = api.CreateClient();
 
-        using HttpRequestMessage request = method == "POST"
-            ? new(HttpMethod.Post, $"{Meetings}/{meetingId}/runs")
-            : new(HttpMethod.Get, $"{Runs}/{Guid.CreateVersion7()}");
+        using HttpRequestMessage request = method switch
+        {
+            "POST" => new(HttpMethod.Post, $"{Meetings}/{meetingId}/runs"),
+            "LIST" => new(HttpMethod.Get, $"{Meetings}/{meetingId}/runs"),
+            _ => new(HttpMethod.Get, $"{Runs}/{Guid.CreateVersion7()}"),
+        };
 
         HttpResponseMessage response = await anonymous.SendAsync(request, TestContext.Current.CancellationToken);
 
@@ -457,9 +578,11 @@ public sealed class RunsEndpointTests
     /// The persistence ports and the extractor, in memory. Nothing here interprets a request: the
     /// store holds whatever the aggregate produced, so the assertions above are about the Api ring.
     /// </summary>
-    private sealed class ExtractionStore(ExtractionResult result)
+    private sealed class ExtractionStore(params ExtractionResult[] results)
         : IMeetingRepository, IExtractionRunRepository, IActionRevisionRepository, IUnitOfWork, IReadDb, IActionExtractor
     {
+        private int _extractions;
+
         private readonly List<object> _pending = [];
         private readonly List<Meeting> _meetings = [];
         private readonly List<ExtractionRun> _runs = [];
@@ -523,8 +646,11 @@ public sealed class RunsEndpointTests
                     .ThenBy(revision => revision.Sequence),
             ]);
 
+        /// <summary>
+        /// The scripted results in order, one per run; the last one answers every run after it.
+        /// </summary>
         public Task<ExtractionResult> ExtractAsync(ExtractionRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(result);
+            Task.FromResult(results[Math.Min(_extractions++, results.Length - 1)]);
 
         public Task<int> CommitAsync(CancellationToken cancellationToken = default)
         {

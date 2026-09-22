@@ -51,7 +51,7 @@ development_status:
   2-3-fixture-catalog-and-prompt-v1-saturday-evening: done
   2-4-extraction-seam-output-validation-and-the-fake-provider: done
   2-5-extraction-run-and-proposals-persisted-with-ai-proposal-revi: done
-  2-6-run-extraction-from-meeting-detail-and-inspect-run-detail: backlog
+  2-6-run-extraction-from-meeting-detail-and-inspect-run-detail: done
   2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az: backlog
   epic-2-retrospective: optional
 

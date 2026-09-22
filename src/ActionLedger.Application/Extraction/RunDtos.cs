@@ -64,3 +64,31 @@ public sealed record RunDetailDto(
     string? FailureReason,
     IReadOnlyList<string> Warnings,
     IReadOnlyList<ProposedActionDto> Proposals);
+
+/// <summary>
+/// AD-13 — one row of Meeting Detail's run list, as <c>GET /api/v1/meetings/{id}/runs</c> answers
+/// it. The spine names the two counts; everything else is the subset of AD-6 the row renders.
+/// </summary>
+/// <remarks>
+/// Both counts are computed server-side in the same query as the row, so the list never needs a
+/// second read per run and the web never counts proposals itself.
+/// </remarks>
+/// <param name="Id">The run's id. Run Detail is reached through it.</param>
+/// <param name="StartedAt">When the first provider call began, in UTC. The list is newest first by this.</param>
+/// <param name="PromptVersion">The prompt revision the catalog resolved.</param>
+/// <param name="Provider">The configured <c>Ai:Provider</c> the run went through.</param>
+/// <param name="Model">What the active provider reported as its model.</param>
+/// <param name="Outcome">How the run ended.</param>
+/// <param name="FailureReason">Why it failed, verbatim, or <c>null</c> when it did not.</param>
+/// <param name="ProposalCount">Every kept proposal the run minted. <c>0</c> on a failed run.</param>
+/// <param name="PendingCount">The proposals still <c>Pending</c>. Equal to the total until Epic 3 decides one.</param>
+public sealed record RunSummaryDto(
+    Guid Id,
+    DateTimeOffset StartedAt,
+    string PromptVersion,
+    string Provider,
+    string Model,
+    ExtractionOutcome Outcome,
+    string? FailureReason,
+    int ProposalCount,
+    int PendingCount);

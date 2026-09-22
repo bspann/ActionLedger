@@ -1,12 +1,14 @@
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Review;
 using ActionLedger.Domain.Extraction;
+using ActionLedger.Domain.Meetings;
 
 namespace ActionLedger.Application.Extraction;
 
 /// <summary>
 /// AD-2 — reads are per-feature query classes over <see cref="IReadDb"/>. This one serves
-/// <c>GET /api/v1/runs/{id}</c>, which FR-9 renders as Run Detail.
+/// <c>GET /api/v1/runs/{id}</c>, which FR-9 renders as Run Detail, and
+/// <c>GET /api/v1/meetings/{id}/runs</c>, which Meeting Detail renders as its run list.
 /// </summary>
 /// <remarks>
 /// The proposals come from <see cref="ProposedActionReadModel"/> rather than from a projection
@@ -69,6 +71,53 @@ public sealed class RunsQueries(IReadDb readDb, ProposedActionReadModel proposal
             row.FailureReason,
             row.Warnings,
             await proposals.ForRunAsync(id, cancellationToken));
+    }
+
+    /// <summary>
+    /// One Meeting's runs, for Meeting Detail's run list. Newest first, and totally ordered: two
+    /// runs that started in the same instant order by id, so the list never reshuffles between
+    /// reads.
+    /// </summary>
+    /// <param name="meetingId">The Meeting whose runs to list.</param>
+    /// <param name="cancellationToken">The request's cancellation token.</param>
+    /// <exception cref="NotFoundException">No Meeting has that id.</exception>
+    public async Task<IReadOnlyList<RunSummaryDto>> ListForMeetingAsync(
+        Guid meetingId,
+        CancellationToken cancellationToken = default)
+    {
+        // An empty list is an answer only for a Meeting that exists. Without this, a mistyped id
+        // would read as "no runs yet" rather than as the 404 it is.
+        int meetings = await readDb.CountAsync(
+            readDb.Query<Meeting>().Where(meeting => meeting.Id == meetingId),
+            cancellationToken);
+
+        if (meetings == 0)
+        {
+            throw new NotFoundException("Meeting", meetingId);
+        }
+
+        // Hoisted out of the projection for the reason MeetingsQueries.ListAsync gives: composing
+        // the correlated counts against this local is translatable, while calling
+        // readDb.Query<ProposedAction>() inside the Select is a client-evaluation failure.
+        IQueryable<ProposedAction> kept = readDb.Query<ProposedAction>();
+
+        IQueryable<RunSummaryDto> query = readDb.Query<ExtractionRun>()
+            .Where(run => run.MeetingId == meetingId)
+            .OrderByDescending(run => run.StartedAt)
+            .ThenByDescending(run => run.Id)
+            .Select(run => new RunSummaryDto(
+                run.Id,
+                run.StartedAt,
+                run.PromptVersion,
+                run.Provider,
+                run.Model,
+                run.Outcome,
+                run.FailureReason,
+                kept.Count(proposal => proposal.ExtractionRunId == run.Id),
+                kept.Count(proposal => proposal.ExtractionRunId == run.Id
+                    && proposal.ReviewState == ReviewState.Pending)));
+
+        return await readDb.ToListAsync(query, cancellationToken);
     }
 
     /// <summary>

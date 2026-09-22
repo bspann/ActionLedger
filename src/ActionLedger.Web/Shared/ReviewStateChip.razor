@@ -1,0 +1,45 @@
+@* UX-DR6 / EXPERIENCE.md, Review State chip — the Review State's name as text, static, with the
+   DESIGN.md color family behind it. Edited also carries the edit icon, so it is told apart from
+   Approved, which shares its success color, by more than the word. Color is never the only signal:
+   the text is always there.
+
+   Presentational — one parameter in, nothing out. Run Detail's proposal rows use it today and the
+   Epic 3 Review Screen's cards will too, which is why it is in Shared/. *@
+<MudChip T="string"
+         Text="@Text"
+         Icon="@Icon"
+         Size="Size.Small"
+         Class="@CssClass" />
+
+@code {
+    /// <summary>The class every chip carries, beside its per-state modifier.</summary>
+    public const string BaseClass = "al-review-state";
+
+    /// <summary>The Review State to render.</summary>
+    [Parameter]
+    [EditorRequired]
+    public ReviewState State { get; set; }
+
+    /// <summary>The state's name, from Voice so the Glossary's word is the one rendered.</summary>
+    private string Text => State switch
+    {
+        ReviewState.Pending => Voice.Pending,
+        ReviewState.Approved => Voice.Approved,
+        ReviewState.Edited => Voice.Edited,
+        ReviewState.Rejected => Voice.Rejected,
+        _ => throw new ArgumentOutOfRangeException(nameof(State), State, "A review state with no chip."),
+    };
+
+    /// <summary>DESIGN.md: Edited carries the <c>edit</c> icon; no other state has one.</summary>
+    private string? Icon => State is ReviewState.Edited ? Icons.Material.Filled.Edit : null;
+
+    /// <summary>
+    /// DESIGN.md's token mapping, applied in app.css: Pending on primary-container, Approved and
+    /// Edited on success-container, Rejected on neutral-container.
+    /// </summary>
+    private string CssClass => $"{BaseClass} {ModifierFor(State)}";
+
+    /// <summary>The per-state class app.css keys the color pair off.</summary>
+    public static string ModifierFor(ReviewState state) =>
+        BaseClass + "--" + state.ToString().ToLowerInvariant();
+}

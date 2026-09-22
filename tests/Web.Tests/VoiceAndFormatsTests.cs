@@ -57,6 +57,47 @@ public sealed class VoiceAndFormatsTests
         { nameof(Voice.DateRequired), "Date is required." },
         { nameof(Voice.AttendeeTooLong), "An attendee must be 100 characters or fewer." },
         { nameof(Voice.NoValue), "-" },
+        { nameof(Voice.RunExtraction), "Run extraction" },
+        { nameof(Voice.AddNotesFirst), "Add notes first" },
+        { nameof(Voice.ExtractingWithPrefix), "Extracting with " },
+        { nameof(Voice.ProviderModelSeparator), " \u00B7 " },
+        { nameof(Voice.ExtractingSuffix), ". This can take up to a minute with a local model." },
+        { nameof(Voice.ExtractingWithoutProvider), "Extracting. This can take up to a minute with a local model." },
+        { nameof(Voice.NoRuns), "No extraction runs. Add notes, then run extraction." },
+        { nameof(Voice.RunAgain), "Run again" },
+        { nameof(Voice.LowConfidence), "Low confidence" },
+        { nameof(Voice.NoProposals), "The AI found no actions in these notes." },
+        { nameof(Voice.ExtractionFailedPrefix), "Extraction failed. " },
+        { nameof(Voice.ExtractionRuns), "Extraction runs" },
+        { nameof(Voice.ExtractionRun), "Extraction run" },
+        { nameof(Voice.BackToMeeting), "Back to meeting" },
+        { nameof(Voice.Started), "Started" },
+        { nameof(Voice.PromptVersion), "Prompt Version" },
+        { nameof(Voice.AiProvider), "AI Provider" },
+        { nameof(Voice.AiProviderAndModel), "AI Provider and model" },
+        { nameof(Voice.Model), "Model" },
+        { nameof(Voice.SchemaVersion), "Schema version" },
+        { nameof(Voice.Duration), "Duration" },
+        { nameof(Voice.MillisecondsSuffix), " ms" },
+        { nameof(Voice.InputTokens), "Input tokens" },
+        { nameof(Voice.OutputTokens), "Output tokens" },
+        { nameof(Voice.Outcome), "Outcome" },
+        { nameof(Voice.Succeeded), "Succeeded" },
+        { nameof(Voice.Failed), "Failed" },
+        { nameof(Voice.FailureReason), "Failure reason" },
+        { nameof(Voice.Warnings), "Warnings" },
+        { nameof(Voice.DroppedExcerpts), "Dropped excerpts" },
+        { nameof(Voice.Proposals), "Proposals" },
+        { nameof(Voice.Pending), "Pending" },
+        { nameof(Voice.Approved), "Approved" },
+        { nameof(Voice.Edited), "Edited" },
+        { nameof(Voice.Rejected), "Rejected" },
+        { nameof(Voice.Description), "Description" },
+        { nameof(Voice.Confidence), "Confidence" },
+        { nameof(Voice.ReviewState), "Review state" },
+        { nameof(Voice.DecidedBy), "Decided by" },
+        { nameof(Voice.Decided), "Decided" },
+        { nameof(Voice.RejectionReason), "Rejection reason" },
     };
 
     [Theory]
@@ -86,15 +127,16 @@ public sealed class VoiceAndFormatsTests
     public void The_voice_constant_carries_no_exclamation_mark_and_no_emoji(string name, string expected)
     {
         // EXPERIENCE.md, Voice and Tone: "Plain, declarative, no exclamation marks, no emoji."
-        // The one character above ASCII that this vocabulary is allowed is the typographic
-        // apostrophe EXPERIENCE.md itself writes.
+        // The two characters above ASCII that this vocabulary is allowed are the ones
+        // EXPERIENCE.md itself writes: the typographic apostrophe, and the middle dot between an
+        // AI Provider and its model in the in-flight caption.
         Assert.DoesNotContain('!', expected);
 
         foreach (Rune rune in expected.EnumerateRunes())
         {
             Assert.True(
-                rune.Value < 0x80 || rune.Value == '’',
-                $"Voice.{name} contains U+{rune.Value:X4}, which is neither ASCII nor the U+2019 apostrophe.");
+                rune.Value < 0x80 || rune.Value == '\u2019' || rune.Value == '\u00B7',
+                $"Voice.{name} contains U+{rune.Value:X4}, which is neither ASCII, the U+2019 apostrophe, nor the U+00B7 middle dot.");
         }
     }
 
@@ -155,6 +197,17 @@ public sealed class VoiceAndFormatsTests
         Assert.Equal(
             "Saved 2026-09-21 14:03 UTC, immutable",
             Voice.NotesSavedPrefix + Formats.Instant(saved) + Voice.NotesSavedSuffix);
+    }
+
+    [Fact]
+    public void The_in_flight_caption_reads_as_experience_md_writes_it()
+    {
+        // EXPERIENCE.md, Run extraction button: "Extracting with {AI Provider} · {model}. This can
+        // take up to a minute with a local model." Assembled from three constants around two
+        // runtime values, so this is where the whole sentence is checked.
+        Assert.Equal(
+            "Extracting with Fake \u00B7 fixture-catalog. This can take up to a minute with a local model.",
+            Voice.ExtractingWithPrefix + "Fake" + Voice.ProviderModelSeparator + "fixture-catalog" + Voice.ExtractingSuffix);
     }
 
     [Fact]
