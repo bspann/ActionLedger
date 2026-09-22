@@ -74,6 +74,15 @@ public sealed class ApiClientRegistrationTests : BunitContext
     }
 
     [Fact]
+    public void The_http_client_has_no_timeout_of_its_own()
+    {
+        // Spine :192 — no client-side timeout on the run POST, which may take up to the 180-second
+        // run ceiling. Left at the .NET default of 100 seconds, a slow local-model run would be
+        // cut off mid-run and reported as a failure while the server went on to persist it.
+        Assert.Equal(Timeout.InfiniteTimeSpan, Services.GetRequiredService<HttpClient>().Timeout);
+    }
+
+    [Fact]
     public void A_configured_base_address_wins_over_the_host_origin()
     {
         BunitContext context = new();

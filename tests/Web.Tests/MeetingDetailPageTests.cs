@@ -583,6 +583,360 @@ public sealed class MeetingDetailPageTests : BunitContext
         Assert.Empty(provider.FindAll($"#{ConfirmDialog.ConfirmId}"));
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Run extraction and the run list (Story 2.6)
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Without_notes_the_run_button_is_disabled_with_a_visible_caption_and_the_list_is_empty()
+    {
+        SignIn();
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        IElement button = page.Find($"#{MeetingDetailPage.RunExtractionId}");
+
+        Assert.Equal(Voice.RunExtraction, button.TextContent.Trim());
+        Assert.True(button.HasAttribute("disabled"));
+
+        // Visible text beneath the button rather than a tooltip, and named by the button.
+        Assert.Equal(Voice.AddNotesFirst, page.Find($"#{MeetingDetailPage.AddNotesFirstId}").TextContent);
+        Assert.Equal(MeetingDetailPage.AddNotesFirstId, button.GetAttribute("aria-describedby"));
+
+        Assert.Equal(Voice.NoRuns, page.Find($"#{MeetingDetailPage.NoRunsId}").TextContent);
+        Assert.Equal(MeetingId, client.LastListExtractionRunsId);
+    }
+
+    [Fact]
+    public void With_notes_the_run_button_is_enabled_and_the_caption_is_gone()
+    {
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        Assert.False(page.Find($"#{MeetingDetailPage.RunExtractionId}").HasAttribute("disabled"));
+        Assert.Empty(page.FindAll($"#{MeetingDetailPage.AddNotesFirstId}"));
+    }
+
+    [Fact]
+    public async Task Saving_notes_enables_the_run_button_without_a_reload()
+    {
+        SignIn();
+
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        page.Find($"#{MeetingDetailPage.NotesFieldId}").Input("Dana will book the movers.");
+
+        Task saving = page.Find($"#{MeetingDetailPage.SaveNotesId}").ClickAsync(new MouseEventArgs());
+        provider.WaitForElement($"#{ConfirmDialog.ConfirmId}").Click();
+        await saving;
+
+        page.WaitForAssertion(() =>
+            Assert.False(page.Find($"#{MeetingDetailPage.RunExtractionId}").HasAttribute("disabled")));
+        Assert.Empty(page.FindAll($"#{MeetingDetailPage.AddNotesFirstId}"));
+        Assert.Equal(1, client.GetMeetingCalls);
+    }
+
+    [Fact]
+    public async Task While_a_run_is_in_flight_only_the_button_is_blocked_and_the_caption_names_the_provider()
+    {
+        TaskCompletionSource gate = new();
+        client.StartExtractionRunGate = gate.Task;
+        client.Runs = [Summary(Guid.CreateVersion7(), ExtractionOutcome.Succeeded)];
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        Task running = page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        page.WaitForAssertion(() =>
+            Assert.True(page.Find($"#{MeetingDetailPage.RunExtractionId}").HasAttribute("disabled")));
+
+        Assert.NotNull(page.Find($"#{MeetingDetailPage.RunProgressId}"));
+
+        IElement caption = page.Find($"#{MeetingDetailPage.RunCaptionId}");
+
+        Assert.Equal(
+            "Extracting with Fake \u00B7 fixture-catalog. This can take up to a minute with a local model.",
+            caption.TextContent);
+
+        // A polite live region, so the caption's appearance is announced to a screen reader.
+        Assert.Equal("status", caption.GetAttribute("role"));
+        Assert.Equal("polite", caption.GetAttribute("aria-live"));
+
+        // A second press does nothing.
+        page.Find($"#{MeetingDetailPage.RunExtractionId}").Click();
+        Assert.Equal(1, client.StartExtractionRunCalls);
+
+        // The run rows stay live: a row opens its Run Detail while the run is still in flight.
+        page.Find($"#{MeetingDetailPage.RunListId} tbody tr a").Click();
+
+        Assert.EndsWith($"/meetings/{MeetingId}/runs/{client.Runs[0].Id}", Navigation.Uri, StringComparison.Ordinal);
+
+        gate.SetResult();
+        await running;
+    }
+
+    [Fact]
+    public async Task A_succeeded_run_opens_its_run_detail()
+    {
+        Guid runId = Guid.CreateVersion7();
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.StartedRun = new RunDto { Id = runId, Outcome = ExtractionOutcome.Succeeded };
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        await page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(MeetingId, client.LastStartExtractionRunId);
+        Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}", Navigation.Uri, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_failed_run_stays_on_the_page_and_the_reloaded_list_shows_the_reason_verbatim()
+    {
+        const string Reason = "The AI returned invalid output twice.";
+
+        Guid runId = Guid.CreateVersion7();
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.StartedRun = new RunDto { Id = runId, Outcome = ExtractionOutcome.Failed };
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+        string before = Navigation.Uri;
+
+        // What the server lists once the failed run has been persisted.
+        client.Runs = [Summary(runId, ExtractionOutcome.Failed, Reason)];
+
+        await page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(before, Navigation.Uri);
+        Assert.Equal(2, client.ListExtractionRunsCalls);
+
+        // The run list re-read alone: the meeting and its notes were not fetched again.
+        Assert.Equal(1, client.GetMeetingCalls);
+
+        page.WaitForAssertion(() => Assert.Equal(
+            Voice.ExtractionFailedPrefix + Reason,
+            Cells(page)[0][3]));
+        Assert.False(page.Find($"#{MeetingDetailPage.RunExtractionId}").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task A_run_request_that_fails_stays_put_and_offers_retry()
+    {
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.StartExtractionRunThrows = StubApiClient.Bare(500);
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+        string before = Navigation.Uri;
+
+        await page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        snackbars.WaitForAssertion(() =>
+            Assert.Contains(Voice.UnexpectedFailureTitle, snackbars.Markup, StringComparison.Ordinal));
+        Assert.Equal(before, Navigation.Uri);
+        Assert.False(page.Find($"#{MeetingDetailPage.RunExtractionId}").HasAttribute("disabled"));
+
+        Guid runId = Guid.CreateVersion7();
+        client.StartExtractionRunThrows = null;
+        client.StartedRun = new RunDto { Id = runId, Outcome = ExtractionOutcome.Succeeded };
+
+        await RetryAction(snackbars).ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(2, client.StartExtractionRunCalls);
+        page.WaitForAssertion(() =>
+            Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}", Navigation.Uri, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    [InlineData(409)]
+    public async Task A_refusal_the_session_handler_already_announced_offers_no_retry(int status)
+    {
+        // SessionMessageHandler raises its own snackbar for these, and a Retry beside "Your role
+        // does not allow this." would offer a request that can never succeed.
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.StartExtractionRunThrows = StubApiClient.Problem(status, "Refused.");
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        await page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(1, client.StartExtractionRunCalls);
+        Assert.DoesNotContain("Refused.", snackbars.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            snackbars.FindAll("button"),
+            button => string.Equals(button.TextContent.Trim(), Voice.Retry, StringComparison.Ordinal));
+        Assert.False(page.Find($"#{MeetingDetailPage.RunExtractionId}").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task A_retry_pressed_after_the_user_has_left_starts_no_run()
+    {
+        // The snackbar outlives the page. Pressed from elsewhere, its Retry would otherwise POST a
+        // real extraction run the user never sees.
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.StartExtractionRunThrows = StubApiClient.Bare(500);
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        await page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        snackbars.WaitForAssertion(() =>
+            Assert.Contains(Voice.UnexpectedFailureTitle, snackbars.Markup, StringComparison.Ordinal));
+
+        // What the router does on the way out. Only the page is torn down: the snackbar provider
+        // lives in the layout and stays.
+        page.Instance.Dispose();
+        client.StartExtractionRunThrows = null;
+
+        await RetryAction(snackbars).ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(1, client.StartExtractionRunCalls);
+    }
+
+    [Fact]
+    public async Task Without_provider_info_the_page_still_loads_and_the_caption_drops_the_names()
+    {
+        TaskCompletionSource gate = new();
+        client.StartExtractionRunGate = gate.Task;
+        client.GetAiProviderThrows = StubApiClient.Bare(500);
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        // Not a load failure: the provider only names itself in the caption.
+        Assert.DoesNotContain(Voice.LoadFailurePrefix, page.Markup, StringComparison.Ordinal);
+
+        Task running = page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        page.WaitForAssertion(() => Assert.Equal(
+            Voice.ExtractingWithoutProvider,
+            page.Find($"#{MeetingDetailPage.RunCaptionId}").TextContent));
+
+        gate.SetResult();
+        await running;
+    }
+
+    [Fact]
+    public void The_run_list_renders_its_columns_in_the_servers_order()
+    {
+        Guid newest = Guid.CreateVersion7();
+        Guid older = Guid.CreateVersion7();
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.Runs =
+        [
+            Summary(newest, ExtractionOutcome.Succeeded, startedAt: new DateTimeOffset(2026, 9, 22, 9, 20, 0, TimeSpan.Zero), proposals: 3, pending: 2),
+            Summary(older, ExtractionOutcome.Failed, "Both attempts failed validation.", new DateTimeOffset(2026, 9, 22, 9, 15, 0, TimeSpan.Zero)),
+        ];
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        Assert.Equal(
+            [Voice.Started, Voice.PromptVersion, Voice.AiProviderAndModel, Voice.Outcome, Voice.Proposals, Voice.Pending],
+            page.FindAll($"#{MeetingDetailPage.RunListId} th").Select(header => header.TextContent.Trim()));
+
+        string[][] cells = Cells(page);
+
+        Assert.Equal(
+            ["2026-09-22 09:20 UTC", "v1", "Fake \u00B7 fixture-catalog", Voice.Succeeded, "3", "2"],
+            cells[0]);
+        Assert.Equal(
+            ["2026-09-22 09:15 UTC", "v1", "Fake \u00B7 fixture-catalog", Voice.ExtractionFailedPrefix + "Both attempts failed validation.", "0", "0"],
+            cells[1]);
+
+        // The keyboard half of "row opens detail": a real link in the first cell, focusable and
+        // opened by Enter, to Run Detail — never to a Review Screen that does not exist yet.
+        Assert.Equal(
+            [$"/meetings/{MeetingId}/runs/{newest}", $"/meetings/{MeetingId}/runs/{older}"],
+            page.FindAll($"#{MeetingDetailPage.RunListId} tbody tr a").Select(link => link.GetAttribute("href")));
+    }
+
+    [Fact]
+    public void A_row_click_and_its_link_both_open_run_detail()
+    {
+        Guid runId = Guid.CreateVersion7();
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+        client.Runs = [Summary(runId, ExtractionOutcome.Succeeded)];
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        page.Find($"#{MeetingDetailPage.RunListId} tbody tr").Click();
+        Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}", Navigation.Uri, StringComparison.Ordinal);
+
+        Navigation.NavigateTo("/meetings/" + MeetingId);
+        int before = Navigation.History.Count;
+
+        page.Find($"#{MeetingDetailPage.RunListId} tbody tr a").Click();
+
+        Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}", Navigation.Uri, StringComparison.Ordinal);
+
+        // One navigation for one click: the link stops the row from navigating a second time.
+        Assert.Equal(before + 1, Navigation.History.Count);
+    }
+
+    [Fact]
+    public void A_run_list_that_fails_to_load_is_a_load_failure_and_retry_reads_it_again()
+    {
+        SignIn();
+        client.ListExtractionRunsThrows = StubApiClient.Bare(500);
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        Assert.Contains(Voice.LoadFailurePrefix + Voice.UnexpectedFailureTitle, page.Markup, StringComparison.Ordinal);
+
+        client.ListExtractionRunsThrows = null;
+        page.Find($"#{LoadFailure.RetryId}").Click();
+
+        page.WaitForAssertion(() => Assert.Equal(Voice.NoRuns, page.Find($"#{MeetingDetailPage.NoRunsId}").TextContent));
+        Assert.Equal(2, client.ListExtractionRunsCalls);
+    }
+
+    [Fact]
+    public async Task A_run_that_lands_after_the_user_has_left_does_not_pull_them_back()
+    {
+        // Navigation stays live during a run, so the user may be on another page by the time a
+        // slow local model answers. Being yanked to this run's detail from there is the bug.
+        TaskCompletionSource gate = new();
+        client.StartExtractionRunGate = gate.Task;
+
+        SignIn();
+        client.Meeting = Meeting(notes: Notes());
+
+        IRenderedComponent<MeetingDetailPage> page = RenderDetail();
+
+        Task running = page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
+
+        Navigation.NavigateTo("/meetings");
+        await DisposeComponentsAsync();
+
+        gate.SetResult();
+        await running;
+
+        Assert.EndsWith("/meetings", Navigation.Uri, StringComparison.Ordinal);
+    }
+
     private BunitNavigationManager Navigation =>
         (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
 
@@ -591,6 +945,40 @@ public sealed class MeetingDetailPageTests : BunitContext
 
     private void SignIn() =>
         session.SignIn(new SignedInUser("jwt", DateTimeOffset.UnixEpoch, Guid.Empty, "Dana Whitfield", RoleNames.ActionOfficer));
+
+    private static MeetingNotesDto Notes() => new()
+    {
+        Id = Guid.Empty,
+        Text = "Dana will book the movers.",
+        Sha256 = new string('a', 64),
+        SavedAt = SavedAt,
+    };
+
+    private static RunSummaryDto Summary(
+        Guid id,
+        ExtractionOutcome outcome,
+        string? failureReason = null,
+        DateTimeOffset? startedAt = null,
+        int proposals = 0,
+        int pending = 0) => new()
+    {
+        Id = id,
+        StartedAt = startedAt ?? new DateTimeOffset(2026, 9, 22, 9, 15, 0, TimeSpan.Zero),
+        PromptVersion = "v1",
+        Provider = "Fake",
+        Model = "fixture-catalog",
+        Outcome = outcome,
+        FailureReason = failureReason,
+        ProposalCount = proposals,
+        PendingCount = pending,
+    };
+
+    /// <summary>The run table's body cells, row by row, as trimmed text.</summary>
+    private static string[][] Cells(IRenderedComponent<MeetingDetailPage> page) =>
+    [
+        .. page.FindAll($"#{MeetingDetailPage.RunListId} tbody tr")
+            .Select(row => row.QuerySelectorAll("td").Select(cell => cell.TextContent.Trim()).ToArray()),
+    ];
 
     private static MeetingDetailDto Meeting(string[]? attendees = null, MeetingNotesDto? notes = null) => new()
     {

@@ -2,6 +2,7 @@ using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Extraction;
 using ActionLedger.Application.Review;
 using ActionLedger.Domain.Extraction;
+using ActionLedger.Domain.Meetings;
 using ActionLedger.Domain.Users;
 using Xunit;
 
@@ -116,6 +117,109 @@ public sealed class RunsQueriesTests
             Over().GetAsync(Guid.CreateVersion7(), TestContext.Current.CancellationToken));
 
     // ---------------------------------------------------------------------------------------
+    // The run list
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task The_run_list_is_newest_first_by_start_time_then_id()
+    {
+        Meeting meeting = MeetingWithNotes();
+
+        // Started in the order early, late, tied-with-late; inserted in a different order again,
+        // so neither insertion order nor the id alone produces the expected list.
+        ExtractionRun late = StartAt(meeting, StartedAt.AddMinutes(10));
+        ExtractionRun early = StartAt(meeting, StartedAt);
+        ExtractionRun tied = StartAt(meeting, StartedAt.AddMinutes(10));
+
+        ExtractionRun[] byIdDescending = [.. new[] { late, tied }.OrderByDescending(run => run.Id)];
+
+        IReadOnlyList<RunSummaryDto> runs = await Over([meeting], late, early, tied)
+            .ListForMeetingAsync(meeting.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(
+            [byIdDescending[0].Id, byIdDescending[1].Id, early.Id],
+            runs.Select(run => run.Id));
+    }
+
+    [Fact]
+    public async Task Each_run_in_the_list_carries_its_row_fields_and_both_counts()
+    {
+        const string Reason = "The AI returned invalid output twice.";
+
+        Meeting meeting = MeetingWithNotes();
+
+        ExtractionRun succeeded = StartAt(meeting, StartedAt.AddMinutes(1));
+        succeeded.AddProposals(
+            [
+                new("Order the replacement scanners.", "Dana Whitfield", null, 0.91, "Dana will order the scanners."),
+                new("Book the range.", "Facilities", null, 0.62, "Someone should book the range."),
+                new("Send the floor plan.", "Marcus Bell", null, 0.80, "Marcus will send the floor plan."),
+            ],
+            Now);
+
+        ExtractionRun failed = ExtractionRun.Start(
+            meeting.Id, meeting.Notes!.Id, NotesSha256, Guid.CreateVersion7(), Metrics,
+            ExtractionOutcome.Failed, Reason, []);
+
+        IReadOnlyList<RunSummaryDto> runs = await Over([meeting], succeeded, failed)
+            .ListForMeetingAsync(meeting.Id, TestContext.Current.CancellationToken);
+
+        RunSummaryDto newest = runs[0];
+
+        Assert.Equal(succeeded.Id, newest.Id);
+        Assert.Equal(StartedAt.AddMinutes(1), newest.StartedAt);
+        Assert.Equal("v1", newest.PromptVersion);
+        Assert.Equal("Fake", newest.Provider);
+        Assert.Equal("fixture-catalog", newest.Model);
+        Assert.Equal(ExtractionOutcome.Succeeded, newest.Outcome);
+        Assert.Null(newest.FailureReason);
+        Assert.Equal(3, newest.ProposalCount);
+        Assert.Equal(3, newest.PendingCount);
+
+        RunSummaryDto older = runs[1];
+
+        Assert.Equal(failed.Id, older.Id);
+        Assert.Equal(ExtractionOutcome.Failed, older.Outcome);
+        Assert.Equal(Reason, older.FailureReason);
+        Assert.Equal(0, older.ProposalCount);
+        Assert.Equal(0, older.PendingCount);
+    }
+
+    [Fact]
+    public async Task The_run_list_holds_only_the_named_meetings_runs()
+    {
+        Meeting mine = MeetingWithNotes();
+        Meeting other = MeetingWithNotes();
+
+        ExtractionRun run = StartAt(mine, StartedAt);
+
+        IReadOnlyList<RunSummaryDto> runs = await Over([mine, other], run, StartAt(other, StartedAt))
+            .ListForMeetingAsync(mine.Id, TestContext.Current.CancellationToken);
+
+        Assert.Equal(run.Id, Assert.Single(runs).Id);
+    }
+
+    [Fact]
+    public async Task A_meeting_with_no_runs_lists_nothing_rather_than_not_found()
+    {
+        Meeting meeting = MeetingWithNotes();
+
+        IReadOnlyList<RunSummaryDto> runs = await Over([meeting])
+            .ListForMeetingAsync(meeting.Id, TestContext.Current.CancellationToken);
+
+        Assert.Empty(runs);
+    }
+
+    [Fact]
+    public async Task Listing_the_runs_of_a_meeting_that_is_not_there_is_a_not_found()
+    {
+        NotFoundException missing = await Assert.ThrowsAsync<NotFoundException>(() =>
+            Over().ListForMeetingAsync(Guid.CreateVersion7(), TestContext.Current.CancellationToken));
+
+        Assert.Contains("Meeting", missing.Message, StringComparison.Ordinal);
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Fakes
     // ---------------------------------------------------------------------------------------
 
@@ -128,9 +232,24 @@ public sealed class RunsQueriesTests
         IReadOnlyList<string> warnings) =>
         ExtractionRun.Start(meetingId, notesId, NotesSha256, actor, Metrics, outcome, failureReason, warnings);
 
-    private static RunsQueries Over(params ExtractionRun[] runs)
+    private static Meeting MeetingWithNotes()
     {
-        FakeReadDb readDb = new([.. runs, .. runs.SelectMany(run => run.Proposals), Dana]);
+        Meeting meeting = Meeting.Create("Weekly sync", new DateOnly(2026, 9, 22), null, Guid.CreateVersion7(), Now);
+        meeting.AttachNotes("Dana will order the scanners. Someone should book the range.", Now);
+
+        return meeting;
+    }
+
+    private static ExtractionRun StartAt(Meeting meeting, DateTimeOffset startedAt) =>
+        ExtractionRun.Start(
+            meeting.Id, meeting.Notes!.Id, NotesSha256, Guid.CreateVersion7(),
+            Metrics with { StartedAt = startedAt }, ExtractionOutcome.Succeeded, null, []);
+
+    private static RunsQueries Over(params ExtractionRun[] runs) => Over([], runs);
+
+    private static RunsQueries Over(Meeting[] meetings, params ExtractionRun[] runs)
+    {
+        FakeReadDb readDb = new([.. meetings, .. runs, .. runs.SelectMany(run => run.Proposals), Dana]);
 
         return new RunsQueries(readDb, new ProposedActionReadModel(readDb, new FakeExtractionSettings(0.70)));
     }

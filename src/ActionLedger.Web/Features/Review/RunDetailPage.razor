@@ -1,0 +1,341 @@
+@page "/meetings/{MeetingId:guid}/runs/{RunId:guid}"
+@using ActionLedger.Web.Features.Review.Data
+
+@* FR-6, FR-9 — Run Detail: what produced these proposals, before anyone reviews them. The metadata
+   is a two-column definition list rather than a table (DESIGN.md), the warnings expand to the
+   dropped excerpts, a Failed run offers "Run again", and the proposals are listed in the order the
+   AI returned them.
+
+   AD-14 — nothing here is a generated type. ReviewService hands back RunDetail and RunProposal.
+
+   The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to. *@
+
+@inject ReviewService Review
+@inject SessionState Session
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@implements IDisposable
+
+@if (Session.IsSignedIn)
+{
+    @if (notFound)
+    {
+        @* The parent of a run is its meeting, so that is where "Not found." points. *@
+        <NotFoundNotice ParentHref="@MeetingHref" ParentLabel="@Voice.BackToMeeting" />
+    }
+    else
+    {
+        @* Outside the load branches, for the reason MeetingDetailPage gives: FocusOnNavigate
+           looks once, while the GET is still in flight. *@
+        <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@Voice.ExtractionRun</MudText>
+
+        <MudLink Href="@MeetingHref" Class="d-block mb-4" id="@BackToMeetingId">@Voice.BackToMeeting</MudLink>
+
+        @if (failure is not null)
+        {
+            <LoadFailure Title="@failure.Title" OnRetry="LoadAsync" />
+        }
+        else if (run is not null)
+        {
+            <dl class="al-run-metadata" id="@MetadataId">
+                <dt>@Voice.AiProvider</dt>
+                <dd id="@ProviderId">@run.Provider</dd>
+
+                <dt>@Voice.Model</dt>
+                <dd id="@ModelId">@run.Model</dd>
+
+                <dt>@Voice.PromptVersion</dt>
+                <dd id="@PromptVersionId">@run.PromptVersion</dd>
+
+                <dt>@Voice.SchemaVersion</dt>
+                <dd id="@SchemaVersionId">@run.SchemaVersion</dd>
+
+                <dt>@Voice.Started</dt>
+                <dd id="@StartedId">@Formats.Instant(run.StartedAt)</dd>
+
+                <dt>@Voice.Duration</dt>
+                <dd id="@DurationId">@(Integer(run.DurationMs) + Voice.MillisecondsSuffix)</dd>
+
+                @* The integer, always. FR-6: the Fake reports 0 and Run Detail shows "0", never a
+                   blank. *@
+                <dt>@Voice.InputTokens</dt>
+                <dd id="@InputTokensId">@Integer(run.InputTokens)</dd>
+
+                <dt>@Voice.OutputTokens</dt>
+                <dd id="@OutputTokensId">@Integer(run.OutputTokens)</dd>
+
+                <dt>@Voice.Outcome</dt>
+                <dd id="@OutcomeId">@(run.Outcome is RunOutcome.Failed ? Voice.Failed : Voice.Succeeded)</dd>
+
+                @if (run.Outcome is RunOutcome.Failed)
+                {
+                    @* The server's reason, verbatim: prefixed, never reworded. *@
+                    <dt>@Voice.FailureReason</dt>
+                    <dd id="@FailureReasonId" class="al-verbatim">@(Voice.ExtractionFailedPrefix + (run.FailureReason ?? string.Empty))</dd>
+                }
+
+                <dt>@Voice.Warnings</dt>
+                <dd>
+                    <span id="@WarningsCountId">@Integer(run.Warnings.Count)</span>
+
+                    @if (run.Warnings.Count > 0)
+                    {
+                        @* One line per warning, verbatim. The server's string already embeds the
+                           dropped excerpt, so nothing here extracts or rewords it. *@
+                        <MudExpansionPanels Class="mt-2" Elevation="0" Outlined="true">
+                            <MudExpansionPanel Text="@Voice.DroppedExcerpts" id="@WarningsPanelId">
+                                @foreach (string warning in run.Warnings)
+                                {
+                                    <MudText Typo="Typo.body2" Class="al-verbatim al-warning">@warning</MudText>
+                                }
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    }
+                </dd>
+            </dl>
+
+            @if (run.Outcome is RunOutcome.Failed)
+            {
+                @* Disabled while its own POST is in flight, so a double click cannot start two runs. *@
+                <MudButton id="@RunAgainId"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Class="mb-4"
+                           Disabled="@running"
+                           OnClick="RunAgainAsync">@Voice.RunAgain</MudButton>
+            }
+
+            <MudText Typo="Typo.h5" HtmlTag="h2" GutterBottom="true">@Voice.Proposals</MudText>
+
+            @* Items in the order received: the API reads proposals by ordinal, and a re-sort here is
+               the one way AI order could be lost. The three decision cells are rendered, empty,
+               until Story 3.1 publishes decisions — they are part of what the row shows. *@
+            <div id="@ProposalsId">
+                <MudTable T="RunProposal" Items="run.Proposals" Dense="true">
+                    <HeaderContent>
+                        <MudTh>@Voice.Description</MudTh>
+                        <MudTh>@Voice.Confidence</MudTh>
+                        <MudTh>@Voice.ReviewState</MudTh>
+                        <MudTh>@Voice.DecidedBy</MudTh>
+                        <MudTh>@Voice.Decided</MudTh>
+                        <MudTh>@Voice.RejectionReason</MudTh>
+                    </HeaderContent>
+                    <RowTemplate>
+                        <MudTd DataLabel="@Voice.Description" Class="al-proposal-description">@context.Description</MudTd>
+                        <MudTd DataLabel="@Voice.Confidence">
+                            <span class="al-confidence-score">@Confidence(context.Confidence)</span>
+                            @if (context.IsLowConfidence)
+                            {
+                                @* The server's flag, never a threshold compared here (AD-15). Icon
+                                   plus text, so it is never color alone. *@
+                                <span class="al-low-confidence d-inline-flex align-center ml-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" aria-hidden="true" />
+                                    <span class="ml-1">@Voice.LowConfidence</span>
+                                </span>
+                            }
+                        </MudTd>
+                        <MudTd DataLabel="@Voice.ReviewState"><ReviewStateChip State="@context.ReviewState" /></MudTd>
+                        <MudTd DataLabel="@Voice.DecidedBy" Class="al-decided-by">@context.DecidedBy</MudTd>
+                        <MudTd DataLabel="@Voice.Decided" Class="al-decided-at">@(context.DecidedAt is { } at ? Formats.Instant(at) : null)</MudTd>
+                        <MudTd DataLabel="@Voice.RejectionReason" Class="al-rejection-reason">@context.RejectionReason</MudTd>
+                    </RowTemplate>
+                    <NoRecordsContent>
+                        <MudText Typo="Typo.body1" id="@NoProposalsId">@Voice.NoProposals</MudText>
+                    </NoRecordsContent>
+                </MudTable>
+            </div>
+        }
+    }
+}
+
+@code {
+    public const string BackToMeetingId = "run-back-to-meeting";
+
+    /// <summary>The definition list itself, so a test can assert it is a <c>dl</c> and not a table.</summary>
+    public const string MetadataId = "run-metadata";
+
+    public const string ProviderId = "run-provider";
+
+    public const string ModelId = "run-model";
+
+    public const string PromptVersionId = "run-prompt-version";
+
+    public const string SchemaVersionId = "run-schema-version";
+
+    public const string StartedId = "run-started";
+
+    public const string DurationId = "run-duration";
+
+    public const string InputTokensId = "run-input-tokens";
+
+    public const string OutputTokensId = "run-output-tokens";
+
+    public const string OutcomeId = "run-outcome";
+
+    public const string FailureReasonId = "run-failure-reason";
+
+    public const string WarningsCountId = "run-warnings-count";
+
+    public const string WarningsPanelId = "run-warnings";
+
+    public const string RunAgainId = "run-again";
+
+    /// <summary>The wrapper around the proposal table, so its rows can be reached without MudBlazor's classes.</summary>
+    public const string ProposalsId = "run-proposals";
+
+    public const string NoProposalsId = "run-no-proposals";
+
+    /// <summary>Where the login redirect sends an unauthenticated visitor.</summary>
+    private const string LoginRoute = "/login";
+
+    [Parameter]
+    public Guid MeetingId { get; set; }
+
+    [Parameter]
+    public Guid RunId { get; set; }
+
+    private RunDetail? run;
+    private ApiFailure? failure;
+    private bool notFound;
+    private bool running;
+    private bool disposed;
+
+    /// <summary>The run id the current state belongs to, so a navigation to another run reloads.</summary>
+    private Guid? loadedRunId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Session.IsSignedIn)
+        {
+            Session.CaptureAttemptedRoute("/" + Navigation.ToBaseRelativePath(Navigation.Uri));
+            Navigation.NavigateTo(LoginRoute);
+
+            return;
+        }
+
+        // "Run again" navigates from one run's detail to another's, and the router reuses this
+        // component for it: the parameters change but OnInitialized does not run again.
+        if (loadedRunId == RunId)
+        {
+            return;
+        }
+
+        loadedRunId = RunId;
+        run = null;
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        failure = null;
+        notFound = false;
+
+        ReviewOutcome<RunDetail> outcome = await Review.GetRunAsync(RunId);
+
+        if (outcome.Failure is { } problem)
+        {
+            if (problem.StatusCode is 404)
+            {
+                notFound = true;
+            }
+            else
+            {
+                failure = problem;
+            }
+
+            return;
+        }
+
+        // A run that exists but belongs to another meeting is not at this address. Rendering it
+        // would put one meeting's run under another's URL and back link.
+        if (outcome.Value!.MeetingId != MeetingId)
+        {
+            notFound = true;
+
+            return;
+        }
+
+        run = outcome.Value;
+    }
+
+    /// <summary>
+    /// Starts another run against this run's meeting and opens its detail, whatever the outcome:
+    /// a Failed run's detail is where its reason is shown.
+    /// </summary>
+    private async Task RunAgainAsync()
+    {
+        if (running || run is null)
+        {
+            return;
+        }
+
+        // Captured before the await: a back navigation to another run reuses this component and
+        // clears run while the POST is still in flight.
+        Guid meetingId = run.MeetingId;
+        running = true;
+        StateHasChanged();
+
+        try
+        {
+            ReviewOutcome<Guid> outcome = await Review.StartRunAsync(meetingId);
+
+            if (outcome.Failure is { } problem)
+            {
+                // SessionMessageHandler already raised these, and none of them is worth a Retry.
+                if (problem.StatusCode is 401 or 403 or 409)
+                {
+                    return;
+                }
+
+                Snackbar.Add(
+                    problem.Title,
+                    Severity.Error,
+                    options =>
+                    {
+                        options.Action = Voice.Retry;
+                        options.ActionColor = Color.Primary;
+                        options.OnClick = _ => RetryRunAgainAsync();
+                    });
+
+                return;
+            }
+
+            if (!disposed)
+            {
+                Navigation.NavigateTo($"/meetings/{meetingId}/runs/{outcome.Value}");
+            }
+        }
+        finally
+        {
+            running = false;
+        }
+    }
+
+    /// <summary>
+    /// The snackbar's Retry. It arrives from <c>ISnackbar</c>, outside this component's event
+    /// pipeline, so it is dispatched onto the renderer and renders afterwards.
+    /// </summary>
+    /// <remarks>
+    /// The snackbar outlives the page, so a Retry pressed after the user has left would otherwise
+    /// POST a real run nobody sees.
+    /// </remarks>
+    private Task RetryRunAgainAsync() => disposed ? Task.CompletedTask : InvokeAsync(async () =>
+    {
+        await RunAgainAsync();
+        StateHasChanged();
+    });
+
+    private string MeetingHref => $"/meetings/{MeetingId}";
+
+    /// <summary>
+    /// A count with group separators, invariantly, as <c>Formats.Count</c> renders its own: "0" is
+    /// always "0" and 41250 is "41,250" whatever the browser's culture.
+    /// </summary>
+    private static string Integer(int value) => value.ToString("N0", System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>DESIGN.md: a Confidence Score is always two decimals.</summary>
+    private static string Confidence(double value) => value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+
+    public void Dispose() => disposed = true;
+}
