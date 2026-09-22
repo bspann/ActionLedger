@@ -55,7 +55,16 @@ public static class ApiClientRegistration
             // disposeHandler: false — the container owns the scoped SessionMessageHandler and
             // disposes it itself. Left at the default, the HttpClient would claim it too, and
             // whichever disposed first would leave the other holding a disposed handler.
-            return new HttpClient(handler, disposeHandler: false) { BaseAddress = new Uri(baseAddress) };
+            //
+            // No client-side timeout (spine :192). The run POST is synchronous and may take up to
+            // the 180-second run ceiling, which the .NET default of 100 seconds would cut off
+            // mid-run. The generated client shares this one HttpClient, so the timeout is lifted
+            // for every call; nginx's 200-second proxy_read_timeout on /api is the outer bound.
+            return new HttpClient(handler, disposeHandler: false)
+            {
+                BaseAddress = new Uri(baseAddress),
+                Timeout = Timeout.InfiniteTimeSpan,
+            };
         });
 
         services.AddScoped<IActionLedgerApiClient>(

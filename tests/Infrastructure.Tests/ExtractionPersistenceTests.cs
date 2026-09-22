@@ -765,6 +765,68 @@ public sealed class ExtractionPersistenceTests(PostgresFixture postgres)
         Assert.All(items, meeting => Assert.Equal(0, meeting.TrackedActionCount));
     }
 
+    [Fact]
+    public async Task The_run_list_query_translates_to_sql_with_both_counts_newest_first()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await using ServiceProvider services = await MigratedHostAsync(nameof(The_run_list_query_translates_to_sql_with_both_counts_newest_first), cancellationToken);
+
+        Meeting meeting = await SavedMeetingAsync(services, "Weekly sync", cancellationToken);
+        Meeting other = await SavedMeetingAsync(services, "Solo review", cancellationToken);
+
+        ExtractionRun succeeded = ExtractionRun.Start(
+            meeting.Id, meeting.Notes!.Id, meeting.Notes.Sha256, Guid.CreateVersion7(),
+            Metrics with { StartedAt = StartedAt.AddMinutes(5) },
+            ExtractionOutcome.Succeeded, null, warnings: null);
+        IReadOnlyList<ActionRevision> minted = succeeded.AddProposals(Drafts, Created);
+
+        await SaveRunAsync(services, succeeded, cancellationToken, minted);
+        await SaveRunAsync(services, RunFor(meeting, ExtractionOutcome.Failed, "Both attempts failed validation."), cancellationToken);
+        await SaveRunAsync(services, RunFor(other, ExtractionOutcome.Succeeded), cancellationToken);
+
+        // Nothing can decide a proposal before Story 3.2, so one is decided by raw SQL. Without it
+        // every fixture is all-Pending and PendingCount could not be told apart from ProposalCount.
+        await using (NpgsqlConnection connection = new(await ConnectionStringAsync(services)))
+        {
+            await connection.OpenAsync(cancellationToken);
+
+            await using NpgsqlCommand decide = new(
+                "UPDATE proposed_actions SET review_state = 'Approved' WHERE id = @id",
+                connection);
+
+            decide.Parameters.AddWithValue("id", succeeded.Proposals[0].Id);
+
+            Assert.Equal(1, await decide.ExecuteNonQueryAsync(cancellationToken));
+        }
+
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+
+        IReadOnlyList<RunSummaryDto> runs = await QueriesIn(scope).ListForMeetingAsync(meeting.Id, cancellationToken);
+
+        // The later-started run first, although it was inserted first; the other meeting's run absent.
+        Assert.Equal(2, runs.Count);
+        Assert.Equal(succeeded.Id, runs[0].Id);
+
+        // Correlated subqueries, so the failed run with no proposals is still listed, with 0. The
+        // decided proposal still counts toward the total but not toward Pending.
+        Assert.Equal((Drafts.Length, Drafts.Length - 1), (runs[0].ProposalCount, runs[0].PendingCount));
+        Assert.Equal((0, 0), (runs[1].ProposalCount, runs[1].PendingCount));
+        Assert.Equal(ExtractionOutcome.Failed, runs[1].Outcome);
+        Assert.Equal("Both attempts failed validation.", runs[1].FailureReason);
+    }
+
+    [Fact]
+    public async Task The_run_list_query_answers_an_unknown_meeting_with_a_not_found()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await using ServiceProvider services = await MigratedHostAsync(nameof(The_run_list_query_answers_an_unknown_meeting_with_a_not_found), cancellationToken);
+
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+
+        await Assert.ThrowsAsync<NotFoundException>(() =>
+            QueriesIn(scope).ListForMeetingAsync(Guid.CreateVersion7(), cancellationToken));
+    }
+
     // ---------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------

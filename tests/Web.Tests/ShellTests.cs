@@ -5,6 +5,7 @@ using ActionLedger.Web.Core.Shell;
 using ActionLedger.Web.Core.Users;
 using ActionLedger.Web.Features.Auth.Data;
 using ActionLedger.Web.Features.Meetings.Data;
+using ActionLedger.Web.Features.Review.Data;
 using ActionLedger.Web.Layout;
 using Bunit;
 using Bunit.TestDoubles;
@@ -44,10 +45,11 @@ public sealed class ShellTests : BunitContext
         Services.AddSingleton(loading);
         Services.AddSingleton<UserDirectory>();
 
-        // The router reaches LoginPage and MeetingListPage on a matched route, and each injects
-        // its own feature's data service.
+        // The router reaches LoginPage, the two Meetings pages, and Run Detail on a matched route,
+        // and each injects its own feature's data service.
         Services.AddSingleton<AuthService>();
         Services.AddSingleton<MeetingsService>();
+        Services.AddSingleton<ReviewService>();
     }
 
     [Fact]
@@ -245,6 +247,28 @@ public sealed class ShellTests : BunitContext
         Assert.Equal(
             Guid.Parse("01999999-0000-7000-8000-00000000beef"),
             client.LastGetMeetingId);
+    }
+
+    [Fact]
+    public void The_run_detail_route_template_is_matched_and_binds_both_ids()
+    {
+        // RunDetailPageTests hands both ids in as parameters, so nothing else parses
+        // "/meetings/{MeetingId:guid}/runs/{RunId:guid}". A mistyped template sends every run row
+        // to Not found with the rest of the suite green — and a swapped pair would read the
+        // meeting id as a run id, which the meeting check below is what catches.
+        Guid meetingId = Guid.Parse("01999999-0000-7000-8000-00000000beef");
+        Guid runId = Guid.Parse("01999999-0000-7000-8000-0000000000aa");
+
+        SignIn();
+        client.Run.Id = runId;
+        client.Run.MeetingId = meetingId;
+        Navigation.NavigateTo($"/meetings/{meetingId}/runs/{runId}");
+
+        IRenderedComponent<App> app = Render<App>();
+
+        app.WaitForAssertion(() => Assert.Equal("Fake", app.Find("#" + Features.Review.RunDetailPage.ProviderId).TextContent));
+        Assert.Equal(Voice.ExtractionRun, app.Find(".mud-container h1").TextContent);
+        Assert.Equal(runId, client.LastGetExtractionRunId);
     }
 
     [Theory]

@@ -14,6 +14,7 @@
 @inject NavigationManager Navigation
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
+@implements IDisposable
 
 @* Nothing renders for an unauthenticated visitor, and nothing is requested either: the check
    runs before the load. *@
@@ -100,6 +101,70 @@
                        Disabled="@(draft.Trim().Length == 0 || saving)"
                        OnClick="SaveNotesAsync">@Voice.SaveNotes</MudButton>
         }
+
+        @* FR-4 UI and UX-DR14 — the run button, its in-flight state, and the run list. While a run
+           is in flight only the button disables: the notes, the rows, and navigation all stay
+           live, because a local model can take a minute and nothing else depends on the answer. *@
+        <MudText Typo="Typo.h5" HtmlTag="h2" Class="mt-6" GutterBottom="true">@Voice.ExtractionRuns</MudText>
+
+        <MudButton id="@RunExtractionId"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@(detail.Notes is null || running)"
+                   aria-describedby="@(detail.Notes is null ? AddNotesFirstId : null)"
+                   OnClick="RunExtractionAsync">@Voice.RunExtraction</MudButton>
+
+        @if (detail.Notes is null)
+        {
+            @* Visible text beneath the button, never a tooltip: EXPERIENCE.md bans tooltips on
+               disabled controls, and the button names it through aria-describedby. *@
+            <MudText Typo="Typo.caption" Class="d-block" id="@AddNotesFirstId">@Voice.AddNotesFirst</MudText>
+        }
+
+        @if (running)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-2" id="@RunProgressId" />
+            @* role="status" makes the caption a polite live region, so its appearance is announced
+               rather than left for a screen-reader user to stumble on. *@
+            <MudText Typo="Typo.caption" Class="d-block" id="@RunCaptionId" role="status" aria-live="polite">@InFlightCaption</MudText>
+        }
+
+        @* Items rather than ServerData: the list is one meeting's runs, unpaged, and the server
+           has already ordered it newest first. The anchor in the first cell is the keyboard half
+           of "row click opens detail", exactly as on the Meeting List, and does its own
+           navigating for the reasons given there. *@
+        <div id="@RunListId" class="mt-4">
+            <MudTable T="RunListItem"
+                      Items="runs"
+                      OnRowClick="OpenRun"
+                      Hover="true"
+                      Dense="true">
+                <HeaderContent>
+                    <MudTh>@Voice.Started</MudTh>
+                    <MudTh>@Voice.PromptVersion</MudTh>
+                    <MudTh>@Voice.AiProviderAndModel</MudTh>
+                    <MudTh>@Voice.Outcome</MudTh>
+                    <MudTh>@Voice.Proposals</MudTh>
+                    <MudTh>@Voice.Pending</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="@Voice.Started">
+                        <a href="@RunHref(context.Id)"
+                           @onclick="@(() => OpenRun(context.Id))"
+                           @onclick:preventDefault
+                           @onclick:stopPropagation>@Formats.Instant(context.StartedAt)</a>
+                    </MudTd>
+                    <MudTd DataLabel="@Voice.PromptVersion">@context.PromptVersion</MudTd>
+                    <MudTd DataLabel="@Voice.AiProviderAndModel">@(context.Provider + Voice.ProviderModelSeparator + context.Model)</MudTd>
+                    <MudTd DataLabel="@Voice.Outcome"><span class="al-verbatim">@OutcomeText(context)</span></MudTd>
+                    <MudTd DataLabel="@Voice.Proposals">@context.ProposalCount</MudTd>
+                    <MudTd DataLabel="@Voice.Pending">@context.PendingCount</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body1" id="@NoRunsId">@Voice.NoRuns</MudText>
+                </NoRecordsContent>
+            </MudTable>
+        </div>
         }
     }
 }
@@ -141,6 +206,20 @@
 
     public const string NotesCaptionId = "notes-caption";
 
+    public const string RunExtractionId = "run-extraction";
+
+    /// <summary>The caption beneath the disabled button, and what the button is described by.</summary>
+    public const string AddNotesFirstId = "add-notes-first";
+
+    public const string RunProgressId = "run-progress";
+
+    public const string RunCaptionId = "run-caption";
+
+    /// <summary>The wrapper around the run table, so its rows can be reached without MudBlazor's classes.</summary>
+    public const string RunListId = "run-list";
+
+    public const string NoRunsId = "no-runs";
+
     /// <summary>Where the login redirect sends an unauthenticated visitor.</summary>
     private const string LoginRoute = "/login";
 
@@ -148,9 +227,13 @@
     public Guid Id { get; set; }
 
     private MeetingDetail? detail;
+    private IReadOnlyList<RunListItem> runs = [];
+    private ProviderInfo? provider;
     private ApiFailure? failure;
     private bool notFound;
     private bool saving;
+    private bool running;
+    private bool disposed;
     private string draft = string.Empty;
 
     protected override async Task OnInitializedAsync()
@@ -192,7 +275,158 @@
         }
 
         detail = outcome.Value;
+
+        // The run list is part of the page, so a failure to read it is a load failure like any
+        // other. The provider read is not: it only names the provider in the in-flight caption,
+        // and the run can start without it.
+        if (!await LoadRunsAsync())
+        {
+            return;
+        }
+
+        if (provider is null)
+        {
+            MeetingOutcome<ProviderInfo> info = await Meetings.GetProviderAsync();
+
+            provider = info.Failure is null ? info.Value : null;
+        }
     }
+
+    /// <summary>Re-reads the run list alone. Answers whether it succeeded.</summary>
+    private async Task<bool> LoadRunsAsync()
+    {
+        MeetingOutcome<IReadOnlyList<RunListItem>> listed = await Meetings.ListRunsAsync(Id);
+
+        if (listed.Failure is { } problem)
+        {
+            failure = problem;
+
+            return false;
+        }
+
+        runs = listed.Value!;
+
+        return true;
+    }
+
+    /// <summary>
+    /// FR-4 — starts a run and waits for it, with no client-side timeout (spine :192). A Succeeded
+    /// run opens Run Detail; a Failed one is still a 201, so the page stays and the list re-reads,
+    /// which is where the server's reason appears verbatim.
+    /// </summary>
+    private async Task RunExtractionAsync()
+    {
+        // `detail.Notes` guards the snackbar's Retry, which can outlive the state that made the
+        // button enabled, just as SaveNotesAsync's third guard does.
+        if (running || detail?.Notes is null)
+        {
+            return;
+        }
+
+        // Claimed and rendered before the request, so the button draws disabled and the progress
+        // bar and caption appear for the whole wait. The explicit render is for RetryRunAsync,
+        // which does not come through the event pipeline.
+        running = true;
+        StateHasChanged();
+
+        try
+        {
+            MeetingOutcome<StartedRun> outcome = await Meetings.StartRunAsync(Id);
+
+            if (outcome.Failure is { } problem)
+            {
+                // 401, 403 and 409 already raised their own snackbar in SessionMessageHandler, and
+                // a Retry beside "Your role does not allow this." would offer a request that can
+                // never succeed.
+                if (problem.StatusCode is 401 or 403 or 409)
+                {
+                    return;
+                }
+
+                // EXPERIENCE.md's "Save failure or network error" row, as the notes save does it.
+                Snackbar.Add(
+                    problem.Title,
+                    Severity.Error,
+                    options =>
+                    {
+                        options.Action = Voice.Retry;
+                        options.ActionColor = Color.Primary;
+                        options.OnClick = _ => RetryRunAsync();
+                    });
+
+                return;
+            }
+
+            StartedRun started = outcome.Value!;
+
+            if (started.Outcome is RunOutcome.Succeeded)
+            {
+                // Only if the user is still here. Navigation stays live during a run, and a user
+                // who has moved on should not be pulled back to this run when it lands.
+                if (!disposed)
+                {
+                    Navigation.NavigateTo(RunHref(started.Id));
+                }
+
+                return;
+            }
+
+            // A page the user has left has no list to show the Failed row in.
+            if (!disposed)
+            {
+                await LoadRunsAsync();
+            }
+        }
+        finally
+        {
+            running = false;
+        }
+    }
+
+    /// <summary>
+    /// The snackbar's Retry, dispatched onto the renderer for the reason <see cref="RetrySaveAsync"/>
+    /// gives.
+    /// </summary>
+    /// <remarks>
+    /// The snackbar outlives the page, so a Retry pressed after the user has left would otherwise
+    /// POST a real run nobody sees.
+    /// </remarks>
+    private Task RetryRunAsync() => disposed ? Task.CompletedTask : InvokeAsync(async () =>
+    {
+        await RunExtractionAsync();
+        StateHasChanged();
+    });
+
+    private string InFlightCaption =>
+        provider is { } info
+            ? Voice.ExtractingWithPrefix + info.Provider + Voice.ProviderModelSeparator + info.Model + Voice.ExtractingSuffix
+            : Voice.ExtractingWithoutProvider;
+
+    /// <summary>
+    /// A Failed row carries the server's reason verbatim after the fixed prefix (EXPERIENCE.md,
+    /// Voice and Tone). A Failed run always has a reason; the bare word covers one that did not.
+    /// </summary>
+    private static string OutcomeText(RunListItem run) =>
+        run.Outcome is RunOutcome.Failed
+            ? run.FailureReason is { } reason ? Voice.ExtractionFailedPrefix + reason : Voice.Failed
+            : Voice.Succeeded;
+
+    private void OpenRun(TableRowClickEventArgs<RunListItem> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        if (args.Item is { } item)
+        {
+            OpenRun(item.Id);
+        }
+    }
+
+    private void OpenRun(Guid runId) => Navigation.NavigateTo(RunHref(runId));
+
+    /// <summary>Run Detail, nested under this meeting (EXPERIENCE.md, Information Architecture).</summary>
+    private string RunHref(Guid runId) => $"/meetings/{Id}/runs/{runId}";
+
+    public void Dispose() => disposed = true;
 
     private async Task SaveNotesAsync()
     {

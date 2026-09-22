@@ -58,6 +58,53 @@
         }
       }
     },
+    "/api/v1/ai/provider": {
+      "get": {
+        "tags": [
+          "Ai"
+        ],
+        "summary": "Reports the active AI provider and model.",
+        "description": "provider is the configured Ai:Provider (Fake, LocalOpenAI or AzureOpenAI) and model is what that provider reports. No endpoint, key or base URL is published.",
+        "operationId": "GetAiProvider",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AiProviderDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "post": {
         "tags": [
@@ -464,6 +511,91 @@
             "bearer": [ ]
           }
         ]
+      },
+      "get": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Lists this meeting's extraction runs, newest first.",
+        "description": "Ordered by start time descending, then id. Each run carries provider, model, prompt version, outcome and failure reason, plus proposalCount and pendingCount computed server-side. A meeting with no runs answers an empty array.",
+        "operationId": "ListExtractionRuns",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunSummaryDto"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunSummaryDto"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RunSummaryDto"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [ ]
+          }
+        ]
       }
     },
     "/api/v1/meetings/{id}": {
@@ -690,6 +822,21 @@
   },
   "components": {
     "schemas": {
+      "AiProviderDto": {
+        "required": [
+          "provider",
+          "model"
+        ],
+        "type": "object",
+        "properties": {
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          }
+        }
+      },
       "CreateMeetingCommand": {
         "required": [
           "title",
@@ -1223,6 +1370,64 @@
           }
         }
       },
+      "RunSummaryDto": {
+        "required": [
+          "id",
+          "startedAt",
+          "promptVersion",
+          "provider",
+          "model",
+          "outcome",
+          "failureReason",
+          "proposalCount",
+          "pendingCount"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "promptVersion": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ExtractionOutcome"
+          },
+          "failureReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "proposalCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pendingCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
       "SaveMeetingNotesCommand": {
         "required": [
           "text"
@@ -1380,6 +1585,9 @@
   "tags": [
     {
       "name": "Health"
+    },
+    {
+      "name": "Ai"
     },
     {
       "name": "Auth"

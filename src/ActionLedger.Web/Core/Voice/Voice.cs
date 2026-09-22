@@ -165,7 +165,156 @@ public static class Voice
 
     /// <summary>
     /// The placeholder for a field with no value, used by Meeting Detail for a meeting nobody
-    /// attended. An ASCII hyphen rather than an em dash: this vocabulary is ASCII plus U+2019.
+    /// attended. An ASCII hyphen rather than an em dash: this vocabulary is ASCII plus U+2019 and
+    /// U+00B7.
     /// </summary>
     public const string NoValue = "-";
+
+    /// <summary>
+    /// EXPERIENCE.md, Voice and Tone — the button that starts a run on Meeting Detail. "Run
+    /// extraction", never "Let AI find your actions".
+    /// </summary>
+    public const string RunExtraction = "Run extraction";
+
+    /// <summary>
+    /// EXPERIENCE.md, Run extraction button — the visible caption beneath the disabled button when
+    /// the Meeting has no notes. Visible text, never a tooltip: tooltips on disabled controls are banned.
+    /// </summary>
+    public const string AddNotesFirst = "Add notes first";
+
+    /// <summary>
+    /// The in-flight caption, opened by this, completed by the provider,
+    /// <see cref="ProviderModelSeparator"/>, the model, and <see cref="ExtractingSuffix"/>. The
+    /// provider and model are runtime values from <c>GET /api/v1/ai/provider</c>, so the sentence is
+    /// three constants rather than one.
+    /// </summary>
+    public const string ExtractingWithPrefix = "Extracting with ";
+
+    /// <summary>
+    /// Between an AI Provider and its model, in the in-flight caption and the run list. U+00B7 MIDDLE
+    /// DOT, exactly as EXPERIENCE.md writes it; the one code point above ASCII besides U+2019.
+    /// </summary>
+    public const string ProviderModelSeparator = " \u00B7 ";
+
+    /// <summary>The close of the in-flight caption. See <see cref="ExtractingWithPrefix"/>.</summary>
+    public const string ExtractingSuffix = ". This can take up to a minute with a local model.";
+
+    /// <summary>
+    /// The in-flight caption when the provider read failed. The page still loads and the run can
+    /// still start; only the two names are missing, so the sentence drops them rather than a blank.
+    /// </summary>
+    public const string ExtractingWithoutProvider = "Extracting. This can take up to a minute with a local model.";
+
+    /// <summary>EXPERIENCE.md, State Patterns, "Meeting without notes" — the run list's empty state.</summary>
+    public const string NoRuns = "No extraction runs. Add notes, then run extraction.";
+
+    /// <summary>EXPERIENCE.md, "Extraction Failed" — the button a failed run offers on Run Detail.</summary>
+    public const string RunAgain = "Run again";
+
+    /// <summary>EXPERIENCE.md, Low Confidence badge — the text beside the icon. Never color alone.</summary>
+    public const string LowConfidence = "Low confidence";
+
+    /// <summary>EXPERIENCE.md, State Patterns, "Zero Proposed Actions".</summary>
+    public const string NoProposals = "The AI found no actions in these notes.";
+
+    /// <summary>
+    /// EXPERIENCE.md, Voice and Tone — "Extraction failed. {server-supplied reason}". The reason
+    /// follows verbatim; nothing here rewords it.
+    /// </summary>
+    public const string ExtractionFailedPrefix = "Extraction failed. ";
+
+    /// <summary>Meeting Detail's run-list heading. The Glossary's "Extraction Run", in sentence case.</summary>
+    public const string ExtractionRuns = "Extraction runs";
+
+    /// <summary>Run Detail's heading, and what the page is while the run is still loading.</summary>
+    public const string ExtractionRun = "Extraction run";
+
+    /// <summary>Run Detail's link back to the Meeting the run belongs to.</summary>
+    public const string BackToMeeting = "Back to meeting";
+
+    /// <summary>The run list's first column, and Run Detail's start-time term.</summary>
+    public const string Started = "Started";
+
+    /// <summary>The Glossary's "Prompt Version", capitals kept, as a column and a term.</summary>
+    public const string PromptVersion = "Prompt Version";
+
+    /// <summary>The Glossary's "AI Provider", as a column and a term.</summary>
+    public const string AiProvider = "AI Provider";
+
+    /// <summary>
+    /// The run list's column whose cell reads "{provider} · {model}" (EXPERIENCE.md, Run list).
+    /// </summary>
+    public const string AiProviderAndModel = "AI Provider and model";
+
+    /// <summary>Run Detail's model term.</summary>
+    public const string Model = "Model";
+
+    /// <summary>Run Detail's schema-version term.</summary>
+    public const string SchemaVersion = "Schema version";
+
+    /// <summary>Run Detail's duration term.</summary>
+    public const string Duration = "Duration";
+
+    /// <summary>What follows the millisecond count, as <c>{n} ms</c>.</summary>
+    public const string MillisecondsSuffix = " ms";
+
+    /// <summary>Run Detail's input-token term. The value renders "0" for the Fake, never blank.</summary>
+    public const string InputTokens = "Input tokens";
+
+    /// <summary>Run Detail's output-token term.</summary>
+    public const string OutputTokens = "Output tokens";
+
+    /// <summary>The run list's outcome column, and Run Detail's outcome term.</summary>
+    public const string Outcome = "Outcome";
+
+    /// <summary>The outcome of a run whose output validated.</summary>
+    public const string Succeeded = "Succeeded";
+
+    /// <summary>The outcome of a run whose output did not.</summary>
+    public const string Failed = "Failed";
+
+    /// <summary>Run Detail's failure-reason term, shown only on a Failed run.</summary>
+    public const string FailureReason = "Failure reason";
+
+    /// <summary>Run Detail's warnings term. Its value is the count.</summary>
+    public const string Warnings = "Warnings";
+
+    /// <summary>The expansion that lists each dropped Source Excerpt, one line per warning.</summary>
+    public const string DroppedExcerpts = "Dropped excerpts";
+
+    /// <summary>The run list's proposal-count column, and Run Detail's proposals heading.</summary>
+    public const string Proposals = "Proposals";
+
+    /// <summary>
+    /// The run list's Pending-count column, and the Pending Review State's name on its chip. One
+    /// word, one constant.
+    /// </summary>
+    public const string Pending = "Pending";
+
+    /// <summary>The Approved Review State's name.</summary>
+    public const string Approved = "Approved";
+
+    /// <summary>The Edited Review State's name.</summary>
+    public const string Edited = "Edited";
+
+    /// <summary>The Rejected Review State's name.</summary>
+    public const string Rejected = "Rejected";
+
+    /// <summary>Run Detail's proposal description column.</summary>
+    public const string Description = "Description";
+
+    /// <summary>Run Detail's Confidence Score column.</summary>
+    public const string Confidence = "Confidence";
+
+    /// <summary>Run Detail's Review State column.</summary>
+    public const string ReviewState = "Review state";
+
+    /// <summary>Run Detail's decider column. Empty until Story 3.1 publishes decisions.</summary>
+    public const string DecidedBy = "Decided by";
+
+    /// <summary>Run Detail's decision-timestamp column. Empty until Story 3.1.</summary>
+    public const string Decided = "Decided";
+
+    /// <summary>Run Detail's rejection-reason column. Empty until Story 3.1.</summary>
+    public const string RejectionReason = "Rejection reason";
 }

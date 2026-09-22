@@ -1,5 +1,6 @@
 using ActionLedger.Web.Core.Api;
 using ActionLedger.Web.Core.Errors;
+using ActionLedger.Web.Core.Extraction;
 
 namespace ActionLedger.Web.Features.Meetings.Data;
 
@@ -116,8 +117,57 @@ public sealed class MeetingsService(IActionLedgerApiClient client)
             cancellationToken);
 
     /// <summary>
-    /// The four catch arms <c>AuthService</c> documents, written once because this seam makes four
-    /// calls rather than one. Every generated exception shape stops here and leaves as an
+    /// Meeting Detail's run list, newest first. The server orders it and computes both counts; this
+    /// only maps the rows onto web-owned records.
+    /// </summary>
+    public Task<MeetingOutcome<IReadOnlyList<RunListItem>>> ListRunsAsync(
+        Guid id,
+        CancellationToken cancellationToken = default) =>
+        CallAsync<IReadOnlyList<RunListItem>>(
+            async token =>
+            {
+                ICollection<RunSummaryDto> runs = await client
+                    .ListExtractionRunsAsync(id, token)
+                    .ConfigureAwait(false);
+
+                return [.. runs.Select(ToRunListItem)];
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Starts a run against the Meeting's notes. A Failed run is a success here: the server
+    /// answers 201 for both outcomes, and the page decides what each one means.
+    /// </summary>
+    /// <remarks>
+    /// There is no timeout of any kind on this call (spine :192). The run may take up to the
+    /// 180-second ceiling, and <c>ApiClientRegistration</c> lifts the <c>HttpClient</c>'s own.
+    /// </remarks>
+    public Task<MeetingOutcome<StartedRun>> StartRunAsync(
+        Guid id,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(
+            async token =>
+            {
+                RunDto run = await client.StartExtractionRunAsync(id, token).ConfigureAwait(false);
+
+                return new StartedRun(run.Id, ToOutcome(run.Outcome));
+            },
+            cancellationToken);
+
+    /// <summary>The active AI Provider and model, for the in-flight caption (FR-7).</summary>
+    public Task<MeetingOutcome<ProviderInfo>> GetProviderAsync(CancellationToken cancellationToken = default) =>
+        CallAsync(
+            async token =>
+            {
+                AiProviderDto provider = await client.GetAiProviderAsync(token).ConfigureAwait(false);
+
+                return new ProviderInfo(provider.Provider, provider.Model);
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// The catch arms <c>AuthService</c> documents, written once because this seam makes
+    /// several calls rather than one. Every generated exception shape stops here and leaves as an
     /// <see cref="ApiFailure"/>; a cancellation the caller asked for keeps propagating, because
     /// that is a decision to stop rather than a failure to render.
     /// </summary>
@@ -142,7 +192,8 @@ public sealed class MeetingsService(IActionLedgerApiClient client)
         }
         catch (OperationCanceledException exception) when (!cancellationToken.IsCancellationRequested)
         {
-            // A timed-out request throws TaskCanceledException, which is neither of the above.
+            // A cancellation nobody asked for (the shared client has no timeout of its own, but a
+            // torn-down connection still cancels) throws TaskCanceledException, neither of the above.
             return MeetingOutcome<T>.Failed(ApiFailures.From(exception));
         }
     }
@@ -154,6 +205,30 @@ public sealed class MeetingsService(IActionLedgerApiClient client)
             ToDate(summary.MeetingDate),
             summary.RunCount,
             summary.TrackedActionCount);
+
+    private static RunListItem ToRunListItem(RunSummaryDto run) =>
+        new(
+            run.Id,
+            run.StartedAt,
+            run.PromptVersion,
+            run.Provider,
+            run.Model,
+            ToOutcome(run.Outcome),
+            run.FailureReason,
+            run.ProposalCount,
+            run.PendingCount);
+
+    /// <summary>
+    /// The generated enum onto the web-owned one, by member rather than by value, so a reordered
+    /// contract cannot turn a Failed run into a Succeeded one.
+    /// </summary>
+    private static RunOutcome ToOutcome(ExtractionOutcome outcome) =>
+        outcome switch
+        {
+            ExtractionOutcome.Succeeded => RunOutcome.Succeeded,
+            ExtractionOutcome.Failed => RunOutcome.Failed,
+            _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, "An outcome the contract does not publish."),
+        };
 
     private static MeetingNotes ToNotes(MeetingNotesDto notes) =>
         new(notes.Id, notes.Text, notes.Sha256, notes.SavedAt);
@@ -218,8 +293,35 @@ public sealed record MeetingDetail(
     MeetingNotes? Notes);
 
 /// <summary>
+/// AD-14 — one row of Meeting Detail's run list, mirroring <c>RunSummaryDto</c> in web-owned types.
+/// </summary>
+/// <param name="StartedAt">When the run began, rendered through <c>Formats.Instant</c>.</param>
+/// <param name="FailureReason">The server's reason, verbatim, or <c>null</c> when the run did not fail.</param>
+/// <param name="ProposalCount">Every kept proposal. The web never counts them itself.</param>
+/// <param name="PendingCount">Those still Pending, as the server counted them.</param>
+public sealed record RunListItem(
+    Guid Id,
+    DateTimeOffset StartedAt,
+    string PromptVersion,
+    string Provider,
+    string Model,
+    RunOutcome Outcome,
+    string? FailureReason,
+    int ProposalCount,
+    int PendingCount);
+
+/// <summary>
+/// What starting a run answers: the new run's id and how it ended. Both outcomes arrive as a 201,
+/// so this is a success either way and the page branches on <paramref name="Outcome"/>.
+/// </summary>
+public sealed record StartedRun(Guid Id, RunOutcome Outcome);
+
+/// <summary>FR-7 — the active AI Provider and the model it answers with.</summary>
+public sealed record ProviderInfo(string Provider, string Model);
+
+/// <summary>
 /// AD-14 — what every <see cref="MeetingsService"/> call returns, mirroring <c>SignInOutcome</c>.
-/// Generic because this seam has four calls rather than one, and each carries a different value.
+/// Generic because this seam has several calls rather than one, and each carries a different value.
 /// </summary>
 /// <remarks>
 /// <para>

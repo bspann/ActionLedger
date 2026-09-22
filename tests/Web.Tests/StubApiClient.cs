@@ -9,10 +9,8 @@ namespace ActionLedger.Web.Tests;
 /// </summary>
 /// <remarks>
 /// Every operation records its call count and its arguments, so "called exactly once" and "called
-/// nothing else" are both assertable. The health operations and the two extraction-run operations
-/// throw: nothing in the web app calls them yet, and a service that quietly grew one fails here
-/// rather than passing quietly. Story 2.6 adds the UI that runs extraction and reads Run Detail,
-/// and that is the story that replaces these two throws with recorded calls.
+/// nothing else" are both assertable. The health operations throw: nothing in the web app calls
+/// them, and a service that quietly grew one fails here rather than passing quietly.
 /// </remarks>
 internal sealed class StubApiClient : IActionLedgerApiClient
 {
@@ -88,13 +86,118 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
 
-    public Task<RunDto> StartExtractionRunAsync(Guid id) => throw NotExercisedYet();
+    internal int StartExtractionRunCalls { get; private set; }
 
-    public Task<RunDto> StartExtractionRunAsync(Guid id, CancellationToken cancellationToken) => throw NotExercisedYet();
+    internal Guid LastStartExtractionRunId { get; private set; }
 
-    public Task<RunDetailDto> GetExtractionRunAsync(Guid id) => throw NotExercisedYet();
+    /// <summary>Thrown from <c>StartExtractionRunAsync</c> instead of returning, when set.</summary>
+    internal Exception? StartExtractionRunThrows { get; set; }
 
-    public Task<RunDetailDto> GetExtractionRunAsync(Guid id, CancellationToken cancellationToken) => throw NotExercisedYet();
+    /// <summary>
+    /// Awaited by <c>StartExtractionRunAsync</c> before it answers, so a test can hold a run in
+    /// flight and assert what the page renders — and leaves interactive — meanwhile.
+    /// </summary>
+    internal Task? StartExtractionRunGate { get; set; }
+
+    internal RunDto StartedRun { get; set; } = new()
+    {
+        Id = Guid.Empty,
+        Outcome = ExtractionOutcome.Succeeded,
+    };
+
+    internal int GetExtractionRunCalls { get; private set; }
+
+    internal Guid LastGetExtractionRunId { get; private set; }
+
+    /// <summary>Thrown from <c>GetExtractionRunAsync</c> instead of returning, when set.</summary>
+    internal Exception? GetExtractionRunThrows { get; set; }
+
+    internal RunDetailDto Run { get; set; } = new()
+    {
+        Id = Guid.Empty,
+        MeetingId = Guid.Empty,
+        MeetingNotesId = Guid.Empty,
+        NotesSha256 = new string('a', 64),
+        StartedByUserId = Guid.Empty,
+        Provider = "Fake",
+        Model = "fixture-catalog",
+        PromptVersion = "v1",
+        SchemaVersion = "1",
+        StartedAt = new DateTimeOffset(2026, 9, 22, 9, 15, 0, TimeSpan.Zero),
+        DurationMs = 87,
+        InputTokens = 0,
+        OutputTokens = 0,
+        Outcome = ExtractionOutcome.Succeeded,
+        FailureReason = null,
+        Warnings = [],
+        Proposals = [],
+    };
+
+    internal int ListExtractionRunsCalls { get; private set; }
+
+    internal Guid LastListExtractionRunsId { get; private set; }
+
+    /// <summary>Thrown from <c>ListExtractionRunsAsync</c> instead of returning, when set.</summary>
+    internal Exception? ListExtractionRunsThrows { get; set; }
+
+    /// <summary>Empty by default: a meeting nobody has run yet.</summary>
+    internal List<RunSummaryDto> Runs { get; set; } = [];
+
+    internal int GetAiProviderCalls { get; private set; }
+
+    /// <summary>Thrown from <c>GetAiProviderAsync</c> instead of returning, when set.</summary>
+    internal Exception? GetAiProviderThrows { get; set; }
+
+    /// <summary>What the real host reports under the Fake provider.</summary>
+    internal AiProviderDto AiProvider { get; set; } = new() { Provider = "Fake", Model = "fixture-catalog" };
+
+    public Task<RunDto> StartExtractionRunAsync(Guid id) => StartExtractionRunAsync(id, CancellationToken.None);
+
+    public async Task<RunDto> StartExtractionRunAsync(Guid id, CancellationToken cancellationToken)
+    {
+        StartExtractionRunCalls++;
+        LastStartExtractionRunId = id;
+
+        if (StartExtractionRunGate is not null)
+        {
+            await StartExtractionRunGate;
+        }
+
+        return StartExtractionRunThrows is null ? StartedRun : throw StartExtractionRunThrows;
+    }
+
+    public Task<RunDetailDto> GetExtractionRunAsync(Guid id) => GetExtractionRunAsync(id, CancellationToken.None);
+
+    public Task<RunDetailDto> GetExtractionRunAsync(Guid id, CancellationToken cancellationToken)
+    {
+        GetExtractionRunCalls++;
+        LastGetExtractionRunId = id;
+
+        return GetExtractionRunThrows is null ? Task.FromResult(Run) : Task.FromException<RunDetailDto>(GetExtractionRunThrows);
+    }
+
+    public Task<ICollection<RunSummaryDto>> ListExtractionRunsAsync(Guid id) =>
+        ListExtractionRunsAsync(id, CancellationToken.None);
+
+    public Task<ICollection<RunSummaryDto>> ListExtractionRunsAsync(Guid id, CancellationToken cancellationToken)
+    {
+        ListExtractionRunsCalls++;
+        LastListExtractionRunsId = id;
+
+        // A copy, so a test that changes Runs after a read is not rewriting what the page holds.
+        return ListExtractionRunsThrows is null
+            ? Task.FromResult<ICollection<RunSummaryDto>>([.. Runs])
+            : Task.FromException<ICollection<RunSummaryDto>>(ListExtractionRunsThrows);
+    }
+
+    public Task<AiProviderDto> GetAiProviderAsync() => GetAiProviderAsync(CancellationToken.None);
+
+    public Task<AiProviderDto> GetAiProviderAsync(CancellationToken cancellationToken)
+    {
+        GetAiProviderCalls++;
+
+        return GetAiProviderThrows is null ? Task.FromResult(AiProvider) : Task.FromException<AiProviderDto>(GetAiProviderThrows);
+    }
 
     internal int CreateMeetingCalls { get; private set; }
 
@@ -289,6 +392,4 @@ internal sealed class StubApiClient : IActionLedgerApiClient
     private static NotSupportedException NotExercised() =>
         new("The web app calls neither health operation; a caller that grew one should fail here.");
 
-    private static NotSupportedException NotExercisedYet() =>
-        new("Story 2.6 adds the UI that starts a run and reads Run Detail; nothing calls these yet.");
 }

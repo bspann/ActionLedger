@@ -53,8 +53,8 @@ public sealed class MeetingsEndpointTests
                 $"/{ApiRoutes.Prefix}/meetings",
                 $"/{ApiRoutes.Prefix}/meetings/{{id}}",
                 $"/{ApiRoutes.Prefix}/meetings/{{id}}/notes",
-                // AD-13 — a run is created against a Meeting and read at runs/{id}, so only the
-                // create half appears under this prefix.
+                // AD-13 — a Meeting's runs are created and listed here and each one is read at
+                // runs/{id}, so the POST and the list GET share this one pattern.
                 $"/{ApiRoutes.Prefix}/meetings/{{id}}/runs",
             ],
             routes);
@@ -134,6 +134,7 @@ public sealed class MeetingsEndpointTests
     [InlineData("POST", "")]
     [InlineData("GET", "/00000000-0000-0000-0000-000000000000")]
     [InlineData("PUT", "/00000000-0000-0000-0000-000000000000/notes")]
+    [InlineData("GET", "/00000000-0000-0000-0000-000000000000/runs")]
     public async Task Every_meeting_operation_refuses_an_anonymous_caller(string method, string suffix)
     {
         await using TestApi api = new();

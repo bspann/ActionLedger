@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace ActionLedger.Api.Controllers;
 
 /// <summary>
-/// AD-13 — the five Meeting operations. The route carries no <c>api/v1</c>:
+/// AD-13 — the six Meeting operations. The route carries no <c>api/v1</c>:
 /// <c>ApiRoutePrefixConvention</c> prepends it, so a controller cannot forget the prefix. AD-2 —
 /// each action validates the HTTP shape and calls exactly one handler or query.
 /// </summary>
@@ -31,7 +31,8 @@ public sealed class MeetingsController(
     CreateMeetingHandler createMeeting,
     SaveMeetingNotesHandler saveNotes,
     RunExtractionHandler runExtraction,
-    MeetingsQueries meetings) : ControllerBase
+    MeetingsQueries meetings,
+    RunsQueries runs) : ControllerBase
 {
     /// <summary>
     /// The controller name <c>CreatedAtAction</c> wants for the run's <c>Location</c>: MVC's token
@@ -155,6 +156,37 @@ public sealed class MeetingsController(
         // RunsEndpointTests.
         return CreatedAtAction(nameof(RunsController.Get), RunsControllerName, new { id = run.Id }, run);
     }
+
+    /// <summary>Lists this meeting's extraction runs, newest first.</summary>
+    /// <remarks>
+    /// Each row carries what Meeting Detail's run list renders: when it started, the prompt
+    /// version, provider and model, the outcome and failure reason, and two counts computed
+    /// server-side — every kept proposal, and those still Pending. A meeting with no runs is an
+    /// empty array, not a 404.
+    /// </remarks>
+    /// <param name="id">The Meeting's id.</param>
+    /// <param name="cancellationToken">The request's cancellation token.</param>
+    /// <response code="200">The meeting's runs, newest first. Empty when none has been started.</response>
+    /// <response code="400">A malformed id.</response>
+    /// <response code="401">No token, or a token this Api did not issue.</response>
+    /// <response code="404">No Meeting has that id.</response>
+    [HttpGet("{id}/runs")]
+    [EndpointName("ListExtractionRuns")]
+    [EndpointSummary("Lists this meeting's extraction runs, newest first.")]
+    [EndpointDescription(
+        "Ordered by start time descending, then id. Each run carries provider, model, prompt "
+        + "version, outcome and failure reason, plus proposalCount and pendingCount computed "
+        + "server-side. A meeting with no runs answers an empty array.")]
+    [ProducesResponseType<IReadOnlyList<RunSummaryDto>>(StatusCodes.Status200OK)]
+    // ValidationProblemDetails for the same reason StartRun gives: a malformed {id} is answered by
+    // model binding with an `errors` map.
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<IReadOnlyList<RunSummaryDto>>> ListRuns(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken) =>
+        Ok(await runs.ListForMeetingAsync(id, cancellationToken));
 
     /// <summary>Lists meetings, newest first.</summary>
     /// <remarks>
