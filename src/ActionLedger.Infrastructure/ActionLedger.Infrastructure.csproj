@@ -16,8 +16,14 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" />
-    <!-- AD-11: the one AI SDK in the tree, and it stops at this ring. -->
+    <!--
+      AD-11: the one AI SDK in the tree, and it stops at this ring. The OpenAI SDK and its adapter
+      serve both real providers (Story 2.7); Architecture.Tests fails the build if either reaches
+      Domain or Application.
+    -->
     <PackageReference Include="Microsoft.Extensions.AI" />
+    <PackageReference Include="Microsoft.Extensions.AI.OpenAI" />
+    <PackageReference Include="OpenAI" />
   </ItemGroup>
 
   <!--

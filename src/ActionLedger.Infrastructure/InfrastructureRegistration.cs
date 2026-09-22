@@ -80,7 +80,8 @@ public static class InfrastructureRegistration
 
     /// <summary>
     /// AD-11 — the AI seam: the prompt and fixture catalogs, the keyed provider factories, the one
-    /// chat client, the one extractor, the provider-info port, and AD-16's startup check.
+    /// chat client, the one extractor, the provider-info port, and AD-16's startup check and
+    /// provider probe.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -91,8 +92,14 @@ public static class InfrastructureRegistration
     /// </para>
     /// <para>
     /// FR-7 — adding a provider is one factory class in <c>Ai/Providers</c> plus one
-    /// <c>AddKeyedSingleton</c> line here. This story registers the Fake and nothing else; Story
-    /// 2.7 adds LocalOpenAI and AzureOpenAI and touches no other file in <c>src/</c>.
+    /// <c>AddKeyedSingleton</c> line here. Story 2.4 registered the Fake; Story 2.7 added LocalOpenAI
+    /// and AzureOpenAI as siblings, their settings, and <see cref="ProviderStartupProbe"/>, and left
+    /// the extractor, the startup check, and every ring above Infrastructure untouched.
+    /// </para>
+    /// <para>
+    /// AD-16 — <see cref="ProviderStartupProbe"/> starts directly after <see cref="AiStartupCheck"/>,
+    /// so an unreachable local server or a missing Azure credential also fails the host before the
+    /// seeder runs.
     /// </para>
     /// </remarks>
     /// <param name="services">The container.</param>
@@ -101,19 +108,30 @@ public static class InfrastructureRegistration
     /// <see cref="AddActionLedgerPersistence"/>'s reason: the Api's <c>ValidateOnStart</c> options
     /// are only resolvable once the provider is built.
     /// </param>
+    /// <param name="localOpenAI">Reads the <c>Ai:LocalOpenAI</c> sub-section from the validated options.</param>
+    /// <param name="azureOpenAI">
+    /// Reads the <c>Ai:AzureOpenAI</c> sub-section, api key included, from the validated options. The
+    /// key stays in this provider's settings record and never reaches <see cref="AiSettings"/>.
+    /// </param>
     public static IServiceCollection AddActionLedgerAi(
         this IServiceCollection services,
-        Func<IServiceProvider, AiSettings> settings)
+        Func<IServiceProvider, AiSettings> settings,
+        Func<IServiceProvider, LocalOpenAISettings> localOpenAI,
+        Func<IServiceProvider, AzureOpenAISettings> azureOpenAI)
     {
         services.AddSingleton(settings);
+        services.AddSingleton(localOpenAI);
+        services.AddSingleton(azureOpenAI);
 
         // Both catalogs read embedded resources once, so they are singletons and there is no path,
         // no copy step and no per-request I/O behind either (AD-6, AD-21).
         services.AddSingleton<FixtureCatalog>();
         services.AddSingleton<IPromptCatalog, PromptCatalog>();
 
-        // The one line Story 2.7 adds a sibling to. The key is the Ai:Provider value itself.
+        // FR-7 — one line per provider. The key is the Ai:Provider value itself.
         services.AddKeyedSingleton<IChatClientFactory, FakeChatClientFactory>(FakeChatClientFactory.ProviderName);
+        services.AddKeyedSingleton<IChatClientFactory, LocalOpenAIChatClientFactory>(LocalOpenAIChatClientFactory.ProviderName);
+        services.AddKeyedSingleton<IChatClientFactory, AzureOpenAIChatClientFactory>(AzureOpenAIChatClientFactory.ProviderName);
 
         // The active factory, resolved by name through the one lookup AiStartupCheck also uses, so
         // a misconfiguration reads the same wherever it surfaces.
@@ -132,6 +150,7 @@ public static class InfrastructureRegistration
         services.AddSingleton<IExtractionSettings, ExtractionSettings>();
 
         services.AddHostedService<AiStartupCheck>();
+        services.AddHostedService<ProviderStartupProbe>();
 
         return services;
     }

@@ -1,3 +1,4 @@
+using ActionLedger.Domain.Extraction;
 using Microsoft.Extensions.Options;
 
 namespace ActionLedger.Api.Configuration;
@@ -33,14 +34,22 @@ public static class ApiOptionsRegistration
 }
 
 /// <summary>
-/// The one <c>Ai</c> rule data annotations cannot express: which sub-section is required depends
-/// on <c>Ai:Provider</c>.
+/// The <c>Ai</c> rules data annotations cannot express: which sub-section is required, and what
+/// shape its values must have, depends on <c>Ai:Provider</c>.
 /// </summary>
 /// <remarks>
-/// AD-16 also calls for a provider *reachability* probe at startup — <c>GET {BaseUrl}/models</c>
-/// against a local server, credential presence against Azure. That is a hosted service over the
-/// AI ring, which does not exist until Epic 2. This validator covers the configuration shape,
-/// which is all this story can honestly check.
+/// <para>
+/// Only the active provider's section is checked — the others are legitimately empty. For it: every
+/// key is present, the base URL or endpoint is an absolute <c>http</c>/<c>https</c> URI (Azure's
+/// must be <c>https</c>), and the model name fits <c>ExtractionRunMetadata.ModelMaxLength</c>, so a
+/// run can never be refused at persistence for a model name configuration allowed (DW-21).
+/// </para>
+/// <para>
+/// This is shape only. Reachability — <c>GET {BaseUrl}/models</c> — and Azure credential presence
+/// are Infrastructure's <c>ProviderStartupProbe</c>, which starts after <c>ValidateOnStart</c>, so a
+/// malformed URL reads like every other configuration error: an
+/// <see cref="OptionsValidationException"/> naming the key.
+/// </para>
 /// </remarks>
 internal sealed class AiOptionsValidator : IValidateOptions<AiOptions>
 {
@@ -51,13 +60,13 @@ internal sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         switch (options.Provider)
         {
             case AiOptions.LocalOpenAIProvider:
-                RequireKey(failures, options.Provider, "Ai:LocalOpenAI:BaseUrl", options.LocalOpenAI.BaseUrl);
-                RequireKey(failures, options.Provider, "Ai:LocalOpenAI:Model", options.LocalOpenAI.Model);
+                RequireUri(failures, options.Provider, "Ai:LocalOpenAI:BaseUrl", options.LocalOpenAI.BaseUrl, httpsOnly: false);
+                RequireModel(failures, options.Provider, "Ai:LocalOpenAI:Model", options.LocalOpenAI.Model);
                 break;
 
             case AiOptions.AzureOpenAIProvider:
-                RequireKey(failures, options.Provider, "Ai:AzureOpenAI:Endpoint", options.AzureOpenAI.Endpoint);
-                RequireKey(failures, options.Provider, "Ai:AzureOpenAI:Model", options.AzureOpenAI.Model);
+                RequireUri(failures, options.Provider, "Ai:AzureOpenAI:Endpoint", options.AzureOpenAI.Endpoint, httpsOnly: true);
+                RequireModel(failures, options.Provider, "Ai:AzureOpenAI:Model", options.AzureOpenAI.Model);
                 RequireKey(failures, options.Provider, "Ai:AzureOpenAI:ApiKey", options.AzureOpenAI.ApiKey);
                 break;
 
@@ -69,11 +78,41 @@ internal sealed class AiOptionsValidator : IValidateOptions<AiOptions>
         return failures.Count == 0 ? ValidateOptionsResult.Success : ValidateOptionsResult.Fail(failures);
     }
 
-    private static void RequireKey(List<string> failures, string provider, string key, string value)
+    private static bool RequireKey(List<string> failures, string provider, string key, string value)
     {
         if (string.IsNullOrWhiteSpace(value))
         {
             failures.Add($"{key} is required when Ai:Provider is {provider}.");
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private static void RequireUri(List<string> failures, string provider, string key, string value, bool httpsOnly)
+    {
+        if (!RequireKey(failures, provider, key, value))
+        {
+            return;
+        }
+
+        bool valid = Uri.TryCreate(value, UriKind.Absolute, out Uri? uri)
+            && (uri.Scheme == Uri.UriSchemeHttps || (!httpsOnly && uri.Scheme == Uri.UriSchemeHttp));
+
+        if (!valid)
+        {
+            failures.Add(httpsOnly
+                ? $"{key} must be an absolute https URL when Ai:Provider is {provider}, for example https://<resource>.openai.azure.com/openai/v1/."
+                : $"{key} must be an absolute http or https URL when Ai:Provider is {provider}, for example http://host.docker.internal:1234/v1.");
+        }
+    }
+
+    private static void RequireModel(List<string> failures, string provider, string key, string value)
+    {
+        if (RequireKey(failures, provider, key, value) && value.Length > ExtractionRunMetadata.ModelMaxLength)
+        {
+            failures.Add($"{key} must be at most {ExtractionRunMetadata.ModelMaxLength} characters; every run records it.");
         }
     }
 }

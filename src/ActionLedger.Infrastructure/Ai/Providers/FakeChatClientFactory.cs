@@ -3,13 +3,13 @@ using Microsoft.Extensions.AI;
 namespace ActionLedger.Infrastructure.Ai.Providers;
 
 /// <summary>
-/// AD-21 — the Fake provider's factory, and the only one this story registers.
+/// AD-21 — the Fake provider's factory: the compose default and the demo fallback.
 /// </summary>
 /// <remarks>
 /// The Fake is what all of Sunday's work, CI, and the demo fallback run on: it answers from the
-/// committed fixture catalog with no model server, no credential, and no network. Story 2.7 adds
+/// committed fixture catalog with no model server, no credential, and no network. Story 2.7 added
 /// <c>LocalOpenAIChatClientFactory</c> and <c>AzureOpenAIChatClientFactory</c> beside this file and
-/// changes nothing else.
+/// changed nothing above this folder.
 /// </remarks>
 /// <param name="catalog">The embedded answer table.</param>
 public sealed class FakeChatClientFactory(FixtureCatalog catalog) : IChatClientFactory
@@ -36,4 +36,8 @@ public sealed class FakeChatClientFactory(FixtureCatalog catalog) : IChatClientF
 
     /// <inheritdoc />
     public IChatClient Create() => new FakeChatClient(catalog);
+
+    /// <inheritdoc />
+    /// <remarks>The Fake has nothing to reach and no credential to check.</remarks>
+    public Task VerifyAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }

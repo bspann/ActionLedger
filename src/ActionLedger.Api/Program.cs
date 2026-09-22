@@ -10,6 +10,7 @@ using ActionLedger.Application;
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Infrastructure;
 using ActionLedger.Infrastructure.Ai;
+using ActionLedger.Infrastructure.Ai.Providers;
 using ActionLedger.Infrastructure.Persistence;
 using ActionLedger.Infrastructure.Seed;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -44,14 +45,30 @@ builder.Services.AddActionLedgerPersistence(services =>
 
 // AD-11, AD-16 — the AI ring takes validated values, never configuration, exactly as the seeder
 // does. Registered before AddActionLedgerSeeding because hosted services start in registration
-// order: a prompt version with no file or a provider with no factory fails the host here, before
-// any demo row is written.
-builder.Services.AddActionLedgerAi(services =>
-{
-    AiOptions ai = services.GetRequiredService<IOptions<AiOptions>>().Value;
+// order: a prompt version with no file, a provider with no factory, or a provider whose probe fails
+// (an unreachable local server, a missing Azure credential) stops the host here, before any demo
+// row is written.
+// FR-7 — each provider's sub-section travels in its own settings record, so the Azure api key never
+// rides in AiSettings. Only the active provider's section is validated; the others arrive empty.
+builder.Services.AddActionLedgerAi(
+    services =>
+    {
+        AiOptions ai = services.GetRequiredService<IOptions<AiOptions>>().Value;
 
-    return new AiSettings(ai.Provider, ai.PromptVersion, ai.CallTimeoutSeconds, ai.LowConfidenceThreshold);
-});
+        return new AiSettings(ai.Provider, ai.PromptVersion, ai.CallTimeoutSeconds, ai.LowConfidenceThreshold);
+    },
+    services =>
+    {
+        AiOptions.LocalOpenAIOptions local = services.GetRequiredService<IOptions<AiOptions>>().Value.LocalOpenAI;
+
+        return new LocalOpenAISettings(local.BaseUrl, local.Model);
+    },
+    services =>
+    {
+        AiOptions.AzureOpenAIOptions azure = services.GetRequiredService<IOptions<AiOptions>>().Value.AzureOpenAI;
+
+        return new AzureOpenAISettings(azure.Endpoint, azure.Model, azure.ApiKey);
+    });
 
 // AD-21 — the seeder is a hosted service in the api, gated on Seed:Enabled. Registered here,
 // before the outbox dispatcher the webhook epic adds, so it completes before the first poll.
