@@ -207,7 +207,7 @@ public sealed class RunsEndpointTests
     }
 
     [Fact]
-    public async Task The_meeting_list_reports_the_real_run_count_while_tracked_actions_stay_zero()
+    public async Task The_meeting_list_reports_the_real_run_and_tracked_action_counts()
     {
         ExtractionStore store = new(ExtractionResult.Succeeded(Kept, [], Metrics, []));
         await using TestApi api = new() { ReplaceServices = store.Replace };
@@ -216,8 +216,35 @@ public sealed class RunsEndpointTests
         Guid busy = await MeetingWithNotesAsync(client);
         Guid quiet = await MeetingAsync(client, "Meeting nobody ran", "2026-09-17");
 
+        Guid firstRun = (await ReadAsync(await PostRunAsync(client, busy))).GetProperty("id").GetGuid();
         await PostRunAsync(client, busy);
-        await PostRunAsync(client, busy);
+
+        // One proposal approved and one rejected: only the approval is a Tracked Action.
+        JsonElement[] proposals =
+        [
+            .. (await ReadAsync(await client.GetAsync($"{Runs}/{firstRun}", TestContext.Current.CancellationToken)))
+                .GetProperty("proposals")
+                .EnumerateArray(),
+        ];
+
+        HttpResponseMessage approved = await client.PostAsJsonAsync(
+            $"/api/v1/proposed-actions/{proposals[0].GetProperty("id").GetGuid()}/decision",
+            new
+            {
+                decision = "Approve",
+                description = proposals[0].GetProperty("description").GetString(),
+                ownerUserId = (Guid?)null,
+                dueDate = proposals[0].GetProperty("suggestedDueDate").GetString(),
+            },
+            TestContext.Current.CancellationToken);
+
+        HttpResponseMessage rejected = await client.PostAsJsonAsync(
+            $"/api/v1/proposed-actions/{proposals[1].GetProperty("id").GetGuid()}/decision",
+            new { decision = "Reject" },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, approved.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, rejected.StatusCode);
 
         JsonElement page = await ReadAsync(await client.GetAsync(
             $"{Meetings}?page=1&pageSize=50",
@@ -231,8 +258,9 @@ public sealed class RunsEndpointTests
         Assert.Equal(2, busySummary.GetProperty("runCount").GetInt32());
         Assert.Equal(0, quietSummary.GetProperty("runCount").GetInt32());
 
-        // Story 3.1's literal. It stays 0 whatever the runs did.
-        Assert.Equal(0, busySummary.GetProperty("trackedActionCount").GetInt32());
+        // A correlated count through proposal and run, so the other Meeting stays at 0.
+        Assert.Equal(1, busySummary.GetProperty("trackedActionCount").GetInt32());
+        Assert.Equal(0, quietSummary.GetProperty("trackedActionCount").GetInt32());
     }
 
     // ---------------------------------------------------------------------------------------
@@ -579,7 +607,7 @@ public sealed class RunsEndpointTests
     /// store holds whatever the aggregate produced, so the assertions above are about the Api ring.
     /// </summary>
     private sealed class ExtractionStore(params ExtractionResult[] results)
-        : IMeetingRepository, IExtractionRunRepository, IActionRevisionRepository, IUnitOfWork, IReadDb, IActionExtractor
+        : IMeetingRepository, IExtractionRunRepository, IActionRepository, IActionRevisionRepository, IUnitOfWork, IReadDb, IActionExtractor
     {
         private int _extractions;
 
@@ -587,6 +615,7 @@ public sealed class RunsEndpointTests
         private readonly List<Meeting> _meetings = [];
         private readonly List<ExtractionRun> _runs = [];
         private readonly List<ActionRevision> _revisions = [];
+        private readonly List<TrackedAction> _trackedActions = [];
         private readonly List<User> _users = [];
 
         /// <summary>The runs that were committed, so a refused request can be shown to have written none.</summary>
@@ -606,6 +635,7 @@ public sealed class RunsEndpointTests
         {
             services.RemoveAll<IMeetingRepository>();
             services.RemoveAll<IExtractionRunRepository>();
+            services.RemoveAll<IActionRepository>();
             services.RemoveAll<IActionRevisionRepository>();
             services.RemoveAll<IUnitOfWork>();
             services.RemoveAll<IReadDb>();
@@ -616,6 +646,7 @@ public sealed class RunsEndpointTests
 
             services.AddSingleton<IMeetingRepository>(this);
             services.AddSingleton<IExtractionRunRepository>(this);
+            services.AddSingleton<IActionRepository>(this);
             services.AddSingleton<IActionRevisionRepository>(this);
             services.AddSingleton<IUnitOfWork>(this);
             services.AddSingleton<IReadDb>(this);
@@ -626,6 +657,8 @@ public sealed class RunsEndpointTests
 
         public void Add(ExtractionRun run) => _pending.Add(run);
 
+        public void Add(TrackedAction trackedAction) => _pending.Add(trackedAction);
+
         public void AddRange(IReadOnlyList<ActionRevision> revisions) => _pending.AddRange(revisions);
 
         public Task<Meeting?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
@@ -633,6 +666,9 @@ public sealed class RunsEndpointTests
 
         Task<ExtractionRun?> IExtractionRunRepository.FindByIdAsync(Guid id, CancellationToken cancellationToken) =>
             Task.FromResult(_runs.Find(run => run.Id == id));
+
+        public Task<ExtractionRun?> FindByProposedActionIdAsync(Guid proposedActionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_runs.Find(run => run.Proposals.Any(proposal => proposal.Id == proposedActionId)));
 
         public Task<IReadOnlyList<ActionRevision>> ListForTargetAsync(
             RevisionTargetType targetType,
@@ -669,6 +705,9 @@ public sealed class RunsEndpointTests
                     case ActionRevision revision:
                         _revisions.Add(revision);
                         break;
+                    case TrackedAction trackedAction:
+                        _trackedActions.Add(trackedAction);
+                        break;
                 }
             }
 
@@ -686,6 +725,7 @@ public sealed class RunsEndpointTests
                 : _meetings.Cast<object>()
                     .Concat(_runs)
                     .Concat(_revisions)
+                    .Concat(_trackedActions)
                     .Concat(_users)
                     .OfType<T>()
                     .AsQueryable();

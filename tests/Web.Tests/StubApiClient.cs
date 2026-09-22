@@ -86,6 +86,13 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
 
+    // Story 3.2 publishes the decision operation; Story 3.5 is the first web code to call it, so
+    // until then a service that reached for it fails here rather than passing quietly.
+    public Task<ProposalDecisionDto> DecideProposedActionAsync(Guid id, DecideProposalCommand body) => throw NotExercised();
+
+    public Task<ProposalDecisionDto> DecideProposedActionAsync(Guid id, DecideProposalCommand body, CancellationToken cancellationToken) =>
+        throw NotExercised();
+
     internal int StartExtractionRunCalls { get; private set; }
 
     internal Guid LastStartExtractionRunId { get; private set; }

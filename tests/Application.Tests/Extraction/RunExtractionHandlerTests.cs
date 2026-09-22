@@ -603,6 +603,9 @@ public sealed class RunExtractionHandlerTests
 
         public Task<ExtractionRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default) =>
             Task.FromResult(_added.FirstOrDefault(run => run.Id == id));
+
+        public Task<ExtractionRun?> FindByProposedActionIdAsync(Guid proposedActionId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(_added.FirstOrDefault(run => run.Proposals.Any(proposal => proposal.Id == proposedActionId)));
     }
 
     /// <summary>AD-7 — append and ordered read only, in memory.</summary>

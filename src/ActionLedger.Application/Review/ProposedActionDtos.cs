@@ -11,8 +11,8 @@ namespace ActionLedger.Application.Review;
 /// <see cref="IsLowConfidence"/> and <see cref="SuggestedOwnerUserId"/> are derived server-side and
 /// carried on the wire (AD-15): the web never recomputes either. The decision fields AD-13 also
 /// lists — <c>decidedByUserId</c>, <c>decidedByDisplayName</c>, <c>decidedAt</c>,
-/// <c>rejectionReason</c>, <c>trackedActionId</c> — are Story 3.1's and are not published here,
-/// because nothing can write them yet.
+/// <c>rejectionReason</c>, <c>trackedActionId</c> — are stored since Story 3.1 and written since
+/// Story 3.2, but are published here only with the Review Screen that renders them (Story 3.4).
 /// </remarks>
 /// <param name="Id">The proposal's id.</param>
 /// <param name="Ordinal">The zero-based position in the provider's answer. Reads come back in this order.</param>
@@ -29,7 +29,7 @@ namespace ActionLedger.Application.Review;
 /// The User <see cref="OwnerResolver"/> matched, or <c>null</c> when the suggestion is blank,
 /// matches nobody, or matches more than one. Never an assignment — only a pre-selection (AD-9).
 /// </param>
-/// <param name="ReviewState">Where the proposal stands. <c>Pending</c> until Story 3.2 decides it.</param>
+/// <param name="ReviewState">Where the proposal stands. <c>Pending</c> until a decision moves it, once.</param>
 public sealed record ProposedActionDto(
     Guid Id,
     int Ordinal,
