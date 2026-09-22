@@ -6,7 +6,7 @@ status: 'done'
 baseline_commit: '99ccd7f6537fec51fe8aaca5e8c8d35bb0542e9c'
 baseline_revision: '99ccd7f6537fec51fe8aaca5e8c8d35bb0542e9c'
 review_loop_iteration: 1
-followup_review_recommended: false
+followup_review_recommended: true  # re-armed 2026-09-21: the inline pass was not the context-free one this spec is owed
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-1-5-blazor-webassembly-scaffold-with-mudblazor-theme-tokens-and.md'
