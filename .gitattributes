@@ -1,0 +1,7 @@
+# The fixture catalog's notes bodies are hashed byte-for-byte by Story 2.4's Fake provider and
+# searched verbatim by its excerpt verifier, and the prompt is embedded as an assembly resource.
+# A CRLF checkout (core.autocrlf=true on the Windows host FR36 requires the demo to run on) would
+# change both, so these two trees are pinned to LF. Nothing else here: the rest of the repository
+# keeps git's defaults.
+fixtures/** text eol=lf
+prompts/** text eol=lf

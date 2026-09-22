@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Rewrite the first section of the orientation packet",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": null,
+      "confidence": 0.91,
+      "sourceExcerpt": "Priya Ramaswamy will rewrite the first section of the orientation packet."
+    },
+    {
+      "description": "Put together the building tour route for the first morning",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": null,
+      "confidence": 0.88,
+      "sourceExcerpt": "Marcus Bell will put together the building tour route for the first morning."
+    }
+  ]
+}

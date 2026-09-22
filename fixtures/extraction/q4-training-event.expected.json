@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "description": "Book the training room for 2026-11-17 and 2026-11-18",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": "2026-09-04",
+      "confidence": 0.93,
+      "sourceExcerpt": "Priya Ramaswamy will book the training room for 2026-11-17 and 2026-11-18 by 2026-09-04."
+    },
+    {
+      "description": "Circulate the draft agenda to the regional coordinators",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": "2026-09-09",
+      "confidence": 0.91,
+      "sourceExcerpt": "Dana Whitfield will circulate the draft agenda to the regional coordinators by 2026-09-09."
+    },
+    {
+      "description": "Confirm the catering order with the cafeteria",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-09-14",
+      "confidence": 0.90,
+      "sourceExcerpt": "Marcus Bell will confirm the catering order with the cafeteria by 2026-09-14."
+    },
+    {
+      "description": "Follow up on the leftover question about the handout binders",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": "2026-09-21",
+      "confidence": 0.62,
+      "sourceExcerpt": "Priya Ramaswamy will follow up on the leftover question about the handout binders by 2026-09-21."
+    },
+    {
+      "description": "Decide whether a second session in December is worth running",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-09-18",
+      "confidence": 0.71,
+      "sourceExcerpt": "Marcus Bell will decide by 2026-09-18 whether a second session in December is worth running."
+    }
+  ]
+}

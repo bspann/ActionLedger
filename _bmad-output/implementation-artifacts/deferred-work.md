@@ -76,3 +76,42 @@ source_spec: `spec-2-2-meeting-list-new-meeting-dialog-and-notes-paste-area.md`
 severity: medium
 reason: MeetingListPageTests.Clicking_the_title_link_navigates_exactly_once asserts Assert.Single(Navigation.History), which covers the handler and stopPropagation — remove either and the count goes to zero or two. Nothing is sensitive to preventDefault, because BunitNavigationManager never follows an anchor's default action. Delete the attribute and both link tests pass unchanged. In a browser the click falls through to the href as a document navigation, which reboots the WebAssembly runtime; the spec's own Design Notes record that SessionState holds the token in memory only, so that reload signs the user out. Only a real browser can observe a default action. tests/Web.E2E is still the wiring placeholder AD-18 reserves for Playwright — its single test asserts an assembly name — so this belongs with that suite rather than with this story.
 status: open
+
+### DW-11: The fixture catalog holds 31 expected actions, not the 50 to 70 the PRD addendum's threshold reasoning assumes, so one missed action moves recall about 3.2 points rather than the 1.5 to 2 the 0.80
+origin: spec-deferred 3677d1db7002
+location: fixtures/extraction/ (all fourteen .expected.json files)
+source_spec: `spec-2-3-fixture-catalog-and-prompt-v1-saturday-evening.md`
+severity: medium
+reason: Counted across the fourteen answer files: 6+5+3+2+2+2+2+2+1+2+0+0+2+2 = 31. The addendum at prds/prd-ActionLedger-2026-09-19/addendum.md:18 reasons "Twelve to fifteen notes with four to six actions each give roughly 50 to 70 expected actions. One missed action moves recall by about 1.5 to 2 points. A threshold of 0.80 tolerates 10 to 14 misses across the set." At 31 actions that same threshold tolerates 6 misses, so the gate is materially tighter than the published rationale describes. Not caused by a defect in this story: the per-case counts follow the epic's category spread (4/2/2/2/2/1/1) and the three seed cases follow the PRD storyline exactly, and both are pinned by FixtureCatalogTests. Raising the count means enriching cases with more commitments, which changes the demo's seeded meetings and the Gate's ground truth together. What would settle it: Story 6.2 authors thresholds.json against this catalog. Either restate the addendum's rationale for 31 actions, or enrich the non-seed
+status: open
+
+### DW-12: The DW-11 entry in the deferred-work ledger is truncated mid-sentence in both its heading and its reason, losing the metric it is measured against and the action it proposes.
+origin: spec-deferred df12f27141c2
+location: _bmad-output/implementation-artifacts/deferred-work.md:80,85
+source_spec: `spec-2-3-fixture-catalog-and-prompt-v1-saturday-evening.md`
+severity: medium
+reason: deferred-work.md:80 ends "...rather than the 1.5 to 2 the 0.80" with no noun and no period, where this spec's own deferred block reads "...the 0.80 recall threshold was derived from". The reason at :85 ends "...or enrich the non-seed", where the spec continues "enrich the non-seed cases before the first baseline run. The addendum's own 'Revisit rule' already requires a written rationale for any threshold move." Both truncations were verified by reading the two files side by side. DW-11 is the entry Story 6.2 picks up when it authors thresholds.json, so as filed it loses both halves of what makes it actionable. Not repaired here: the deferred-work ledger is the orchestrator's to own, and this run was instructed not to modify, re-open or rewrite existing ledger entries. Repairing DW-11's two lines from this spec's frontmatter is a mechanical copy the orchestrator can make.
+status: open
+
+### DW-13: Every notes body uses one sentence shape, so the Golden Set measures a narrow slice of the formats the paste area accepts and will not discriminate between providers.
+origin: spec-deferred 38fe2d6113f6
+location: fixtures/extraction/ (all fourteen .md files)
+source_spec: `spec-2-3-fixture-catalog-and-prompt-v1-saturday-evening.md`
+severity: medium
+reason: All fourteen bodies are context paragraph, then one commitment per line, then a closing paragraph, and every extractable sentence is "<Display Name> will <verb> ... by YYYY-MM-DD." or its explicit no-owner/no-date variant. Nothing exercises bullet lists, speaker-prefixed transcript text, an owner named mid-sentence or by pronoun, a commitment spanning two sentences, a table, or noisy pasted text. Not caused by a defect in this story: the per-case counts and categories follow the epic's spread (4/2/2/2/2/1/1) and the three seed cases follow the PRD storyline exactly. What would settle it: the same Story 6.2 threshold conversation that DW-11 opens. Format diversity and action volume are two halves of one question about what the Gate measures, and both change the demo's seeded meetings and the ground truth together.
+status: open
+
+### DW-14: No fixture exercises an extracted owner that resolves to nobody, though AD-9's OwnerResolver must handle exactly that case.
+origin: spec-deferred 53e6c178fb88
+location: fixtures/extraction/ (all fourteen .expected.json files)
+source_spec: `spec-2-3-fixture-catalog-and-prompt-v1-saturday-evening.md`
+severity: medium
+reason: Every_suggested_owner_resolves_through_the_roster and Every_suggested_owner_attended_its_own_meeting together require every non-empty owner to be a roster display name or alias who was in the room, so a vendor, a visitor or a misspelling never appears. roster.json carries ten aliases of which one (P. Ram) is used anywhere in the catalog, and no case uses the "plainly invented names" in attendees that this spec explicitly permits. Not caused by a defect in this story: the catalog's categories come from the epic's spread, which has no unresolvable-owner category. What would settle it: Story 6.2 decides how the Gate scores an owner that matches no User. Adding such a case before that decision would pin ground truth the scorer has no rule for.
+status: open
+
+### DW-15: The catalog's front-matter split and trigram tokenizer are pinned only in the test assembly, so Stories 2.4 and 6.2 could implement either differently without any test noticing.
+origin: spec-deferred 3838c5240316
+location: tests/Architecture.Tests/FixtureCatalogTests.cs (SplitFrontMatter, Trigrams)
+source_spec: `spec-2-3-fixture-catalog-and-prompt-v1-saturday-evening.md`
+reason: FixtureCatalogTests.SplitFrontMatter uses the regex \A---\r?\n(?<front>.*?)^---[ \t]*\r?\n and Trigrams splits on whitespace keeping punctuation, compared OrdinalIgnoreCase. Story 2.4's ExcerptVerifier and Story 6.2's injection scorer will each implement their own; nothing binds them to these, and only a sentence of prose in fixtures/extraction/README.md describes the intended split. Unverified because both consumers are unwritten: if 2.4 trims the body differently, or 6.2 strips punctuation before tokenizing, the catalog can satisfy every assertion here and still behave differently at runtime. No near-miss exists in the current content — every excerpt is an interior single-line sentence and no legitimate action is close to a shared trigram — so this is coupling rather than a live failure today. What would settle it: when 2.4 and 6.2 land, assert their loaders against this catalog rather than re-deriving the rules, or lift the split and tokenizer into one shared place both read.
+status: open
