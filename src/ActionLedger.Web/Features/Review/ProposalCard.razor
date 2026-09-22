@@ -1,0 +1,171 @@
+@using ActionLedger.Web.Features.Review.Data
+
+@* DESIGN.md, Proposal card — one proposal on the Review Screen, Pending or decided. A decided card
+   keeps its place, its header and its Source Excerpt; only the action row changes.
+
+   Presentational: parameters in, EventCallbacks out. The card is an <article tabindex="0"> so a
+   decided card, which has no buttons, is still reached by the keyboard, and so focusing into it
+   activates its highlight the way hovering does. Every derived value — the flag, the owner
+   match, the excerpt range — is the server's (AD-15). *@
+<article tabindex="0"
+         id="@ElementId(Proposal.Id)"
+         class="al-proposal"
+         aria-labelledby="@DescriptionId(Proposal.Id)"
+         aria-describedby="@DescribedBy"
+         @onmouseenter="ActivateAsync"
+         @onfocusin="ActivateAsync">
+    <MudCard Elevation="0" Class="@CardClass">
+        <MudCardContent>
+            <div class="al-proposal-header d-flex align-center flex-wrap gap-2">
+                <ProvenanceChip Kind="Provenance.Ai" />
+
+                <span class="al-confidence">
+                    <span class="al-confidence-label">@Voice.Confidence</span>
+                    <span class="al-confidence-score">@Confidence(Proposal.Confidence)</span>
+                </span>
+
+                @if (Proposal.IsLowConfidence)
+                {
+                    <LowConfidenceBadge />
+                }
+
+                <ReviewStateChip State="@Proposal.ReviewState" />
+            </div>
+
+            @switch (Proposal.ReviewState)
+            {
+                case ReviewState.Approved:
+                    <p class="al-proposal-description" id="@DescriptionId(Proposal.Id)">@Proposal.DecidedDescription</p>
+                    @DecidedValues
+                    break;
+
+                case ReviewState.Edited:
+                    <p class="al-proposal-description" id="@DescriptionId(Proposal.Id)">@Proposal.DecidedDescription</p>
+                    <div class="al-proposal-columns">
+                        <div class="al-proposal-proposed">
+                            <div class="al-proposal-column-heading">@Voice.Proposed</div>
+                            <p class="al-proposal-proposed-description">@Proposal.Description</p>
+                            <dl class="al-proposal-values">
+                                <dt>@Voice.Owner</dt>
+                                <dd class="al-proposed-owner">@(string.IsNullOrEmpty(Proposal.SuggestedOwner) ? Voice.Unassigned : Proposal.SuggestedOwner)</dd>
+                                <dt>@Voice.DueDate</dt>
+                                <dd class="al-proposed-due-date">@(Proposal.SuggestedDueDate is { } proposed ? Formats.Date(proposed) : Voice.NoDueDateProposed)</dd>
+                            </dl>
+                        </div>
+                        <div class="al-proposal-decided">
+                            <div class="al-proposal-column-heading">@Voice.Decided</div>
+                            @DecidedValues
+                        </div>
+                    </div>
+                    break;
+
+                default:
+                    @* Pending and Rejected show what the AI proposed: nothing else was ever tracked. *@
+                    <p class="al-proposal-description" id="@DescriptionId(Proposal.Id)">@Proposal.Description</p>
+                    <dl class="al-proposal-values">
+                        <dt>@Voice.Owner</dt>
+                        <dd>
+                            <span class="al-owner">@(Proposal.SuggestedOwnerDisplayName ?? Voice.Unassigned)</span>
+                            <span class="al-owner-hint">@(Voice.AiSuggestedPrefix + (string.IsNullOrEmpty(Proposal.SuggestedOwner) ? Voice.AiSuggestedNone : Proposal.SuggestedOwner))</span>
+                        </dd>
+                        <dt>@Voice.DueDate</dt>
+                        <dd class="al-due-date">@(Proposal.SuggestedDueDate is { } due ? Formats.Date(due) : Voice.NoDueDateProposed)</dd>
+                    </dl>
+                    break;
+            }
+
+            @* A click on the quote activates the card too, for a pointer user who arrived by scroll. *@
+            <blockquote class="al-source-excerpt al-source-excerpt-quote" @onclick="ActivateAsync">@Proposal.SourceExcerpt</blockquote>
+
+            @if (Proposal.ReviewState is ReviewState.Rejected)
+            {
+                <p class="al-rejection">@(Proposal.RejectionReason is { Length: > 0 } reason ? Voice.ReasonPrefix + reason : Voice.NoReasonGiven)</p>
+            }
+
+            @* Always in the tree, so the decision appearing in it is announced (EXPERIENCE.md,
+               Accessibility). *@
+            <div class="al-proposal-decision d-flex align-center flex-wrap gap-2" aria-live="polite">
+                @if (Proposal.ReviewState is not ReviewState.Pending)
+                {
+                    <ProvenanceChip Kind="Provenance.Human" DecidedBy="@Proposal.DecidedByDisplayName" />
+
+                    @if (Proposal.DecidedAt is { } decidedAt)
+                    {
+                        <span class="al-decided-at">@Formats.Instant(decidedAt)</span>
+                    }
+
+                    @if (Proposal.TrackedActionId is { } trackedActionId)
+                    {
+                        <MudLink Href="@($"/actions/{trackedActionId}")" Class="al-view-action ml-2">@Voice.ViewAction</MudLink>
+                    }
+                }
+            </div>
+
+            @if (Proposal.ReviewState is ReviewState.Pending)
+            {
+                <div class="al-proposal-actions d-flex justify-end gap-2">
+                    <MudButton Class="al-reject" Variant="Variant.Text" Color="Color.Primary" OnClick="OnReject">@Voice.Reject</MudButton>
+                    <MudButton Class="al-edit" Variant="Variant.Outlined" Color="Color.Primary" OnClick="OnEdit">@Voice.Edit</MudButton>
+                    <MudButton Class="al-approve" Variant="Variant.Filled" Color="Color.Primary" OnClick="OnApprove">@Voice.Approve</MudButton>
+                </div>
+            }
+        </MudCardContent>
+    </MudCard>
+</article>
+
+@code {
+    /// <summary>The card's own class, beside MudCard's.</summary>
+    public const string CardBaseClass = "al-proposal-card";
+
+    /// <summary>DESIGN.md: a low-confidence card gains a 4px left border in the low-confidence color.</summary>
+    public const string LowConfidenceClass = "al-proposal-card--low-confidence";
+
+    /// <summary>The proposal to render.</summary>
+    [Parameter]
+    [EditorRequired]
+    public ReviewProposal Proposal { get; set; } = default!;
+
+    /// <summary>Whether this card owns the notes pane's highlight.</summary>
+    [Parameter]
+    public bool IsActive { get; set; }
+
+    /// <summary>Raised on hover, on focus inside the card, and on a click of the Source Excerpt.</summary>
+    [Parameter]
+    public EventCallback OnActivate { get; set; }
+
+    /// <summary>A Pending card's Approve. Story 3.5 binds it.</summary>
+    [Parameter]
+    public EventCallback OnApprove { get; set; }
+
+    /// <summary>A Pending card's Edit. Story 3.5 binds it.</summary>
+    [Parameter]
+    public EventCallback OnEdit { get; set; }
+
+    /// <summary>A Pending card's Reject. Story 3.5 binds it.</summary>
+    [Parameter]
+    public EventCallback OnReject { get; set; }
+
+    /// <summary>The card's element id, so a test or a later story can reach one card by proposal.</summary>
+    public static string ElementId(Guid proposalId) => $"proposal-{proposalId}";
+
+    /// <summary>The description paragraph's id, which names the card for a screen reader.</summary>
+    public static string DescriptionId(Guid proposalId) => $"proposal-{proposalId}-description";
+
+    /// <summary>Only the active card, and only when there is a highlight to describe it.</summary>
+    private string? DescribedBy => IsActive && Proposal.Excerpt is not null ? NotesPane.HighlightId : null;
+
+    private string CardClass => Proposal.IsLowConfidence ? $"{CardBaseClass} {LowConfidenceClass}" : CardBaseClass;
+
+    private Task ActivateAsync() => OnActivate.InvokeAsync();
+
+    /// <summary>The Tracked Action's values, as an Approved card and an Edited card's second column show them.</summary>
+    private RenderFragment DecidedValues => @<dl class="al-proposal-values">
+        <dt>@Voice.Owner</dt>
+        <dd class="al-owner">@(Proposal.DecidedOwnerDisplayName ?? Voice.Unassigned)</dd>
+        <dt>@Voice.DueDate</dt>
+        <dd class="al-due-date">@(Proposal.DecidedDueDate is { } due ? Formats.Date(due) : Voice.NoDueDate)</dd>
+    </dl>;
+
+    /// <summary>DESIGN.md: a Confidence Score is always two decimals.</summary>
+    private static string Confidence(double value) => value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+}

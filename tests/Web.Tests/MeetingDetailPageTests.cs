@@ -682,7 +682,7 @@ public sealed class MeetingDetailPageTests : BunitContext
     }
 
     [Fact]
-    public async Task A_succeeded_run_opens_its_run_detail()
+    public async Task A_succeeded_run_opens_its_review_screen()
     {
         Guid runId = Guid.CreateVersion7();
 
@@ -695,7 +695,7 @@ public sealed class MeetingDetailPageTests : BunitContext
         await page.Find($"#{MeetingDetailPage.RunExtractionId}").ClickAsync(new MouseEventArgs());
 
         Assert.Equal(MeetingId, client.LastStartExtractionRunId);
-        Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}", Navigation.Uri, StringComparison.Ordinal);
+        Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}/review", Navigation.Uri, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -755,7 +755,7 @@ public sealed class MeetingDetailPageTests : BunitContext
 
         Assert.Equal(2, client.StartExtractionRunCalls);
         page.WaitForAssertion(() =>
-            Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}", Navigation.Uri, StringComparison.Ordinal));
+            Assert.EndsWith($"/meetings/{MeetingId}/runs/{runId}/review", Navigation.Uri, StringComparison.Ordinal));
     }
 
     [Theory]

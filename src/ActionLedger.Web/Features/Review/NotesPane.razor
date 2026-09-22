@@ -1,0 +1,41 @@
+@using ActionLedger.Web.Features.Review.Data
+
+@* UX-DR8 — the Review Screen's notes, verbatim, with at most one Source Excerpt highlight. The
+   range is the server's (AD-15): this component slices where it is told to and never searches
+   the text itself.
+
+   The text nodes and the mark sit on one line on purpose. The block is pre-wrap, so any
+   whitespace between them in this file would be rendered as part of the notes.
+
+   Presentational — parameters in, nothing out. *@
+<div class="al-notes al-review-notes">@(Before)@if (Range is not null){<mark id="@HighlightId" class="al-excerpt-highlight">@(Marked)</mark>}@(After)</div>
+
+@code {
+    /// <summary>
+    /// The one highlight's id. The active card's <c>aria-describedby</c> and the page's
+    /// scroll-into-view both point at it, and there is only ever one on the page.
+    /// </summary>
+    public const string HighlightId = "review-excerpt-highlight";
+
+    /// <summary>The notes, byte-for-byte as they were saved.</summary>
+    [Parameter]
+    [EditorRequired]
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>The active proposal's excerpt, or <c>null</c> for no highlight.</summary>
+    [Parameter]
+    public ExcerptRange? Highlight { get; set; }
+
+    /// <summary>
+    /// The highlight, if it lies inside the text. The server located it in these same notes, so an
+    /// out-of-range value means the two reads disagree; rendering no mark is the safe answer.
+    /// </summary>
+    private ExcerptRange? Range =>
+        Highlight is { Start: >= 0, Length: > 0 } range && range.Start + range.Length <= Text.Length ? range : null;
+
+    private string Before => Range is { } range ? Text[..range.Start] : Text;
+
+    private string Marked => Range is { } range ? Text.Substring(range.Start, range.Length) : string.Empty;
+
+    private string After => Range is { } range ? Text[(range.Start + range.Length)..] : string.Empty;
+}

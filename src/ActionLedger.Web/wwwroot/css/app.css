@@ -85,3 +85,160 @@
 .al-low-confidence {
     color: var(--al-low-confidence);
 }
+
+/*
+  FR-10 / UX-DR3 — the Review Screen. The page chooses the layout from the viewport width
+  (ReviewPage reads it through IBrowserViewportService), so the two-pane grid is not behind a media
+  query here: it is only rendered at 1200px and wider. Each pane scrolls on its own inside a
+  viewport-bound height — the app bar and the page header above it are what the subtraction
+  leaves room for.
+*/
+.al-review-meta {
+    margin: 4px 0 16px;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+.al-review-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.al-review-panes {
+    display: grid;
+    grid-template-columns: minmax(var(--al-notes-pane-min), 2fr) 3fr;
+    column-gap: var(--al-page-gutter);
+}
+
+.al-review-pane {
+    height: calc(100vh - var(--mud-appbar-height, 64px) - 176px);
+    min-height: 320px;
+    overflow-y: auto;
+}
+
+/* The notes sit on the same quiet surface the cards do, so the highlight is the one color in it. */
+.al-review-notes {
+    padding: 16px;
+    border-radius: 12px;
+    background-color: var(--al-surface-container-low);
+    color: var(--al-on-surface);
+}
+
+/* DESIGN.md, Source Excerpt highlight — one at a time, on the AI provenance container. */
+.al-excerpt-highlight {
+    background-color: var(--al-ai-provenance-container);
+    color: var(--al-on-surface);
+    border-radius: 2px;
+}
+
+/* DESIGN.md, Proposal card — surface-container-low, 12px radius, no elevation. */
+.al-proposal {
+    display: block;
+    border-radius: 12px;
+}
+
+.al-proposal + .al-proposal {
+    margin-top: 16px;
+}
+
+.al-proposal:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 2px;
+}
+
+.mud-card.al-proposal-card {
+    background-color: var(--al-surface-container-low);
+    border-radius: 12px;
+}
+
+/* DESIGN.md — a low-confidence card gains a 4px left border in the low-confidence color. */
+.mud-card.al-proposal-card--low-confidence {
+    border-left: 4px solid var(--al-low-confidence);
+}
+
+.al-proposal-description {
+    margin: 12px 0 8px;
+}
+
+.al-proposal-values {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 16px;
+    row-gap: 4px;
+    margin: 0 0 8px;
+}
+
+.al-proposal-values dt {
+    font-weight: 500;
+}
+
+.al-proposal-values dd {
+    margin: 0;
+}
+
+.al-owner-hint {
+    display: block;
+    font-size: 12px;
+    line-height: 16px;
+}
+
+/* An Edited card: the AI's values on the AI provenance container, beside the decided ones. */
+.al-proposal-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.al-proposal-proposed {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background-color: var(--al-ai-provenance-container);
+    color: var(--al-on-ai-provenance-container);
+}
+
+.al-proposal-column-heading {
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+/* DESIGN.md — the Source Excerpt is a blockquote on the AI provenance container. */
+.al-source-excerpt-quote {
+    margin: 8px 0 12px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background-color: var(--al-ai-provenance-container);
+    color: var(--al-on-ai-provenance-container);
+    cursor: pointer;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+.al-rejection {
+    margin: 0 0 8px;
+}
+
+/* DESIGN.md, Provenance chip — the two fixed color pairs. The icon and text carry the meaning. */
+.mud-chip.al-provenance--ai {
+    background-color: var(--al-ai-provenance-container);
+    color: var(--al-on-ai-provenance-container);
+}
+
+.mud-chip.al-provenance--human {
+    background-color: var(--al-human-provenance-container);
+    color: var(--al-on-human-provenance-container);
+}
+
+/* DESIGN.md, Pending counter — a neutral pill. */
+.al-pending-counter {
+    display: inline-flex;
+    align-items: center;
+    height: 32px;
+    padding: 0 16px;
+    border-radius: 9999px;
+    background-color: var(--al-neutral-container);
+    color: var(--al-on-neutral-container);
+}

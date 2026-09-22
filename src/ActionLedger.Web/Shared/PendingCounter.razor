@@ -1,0 +1,39 @@
+@* DESIGN.md / EXPERIENCE.md, Pending counter — "{n} proposals pending", or "All proposals decided"
+   with a "View actions" link to the Action List filtered to this Meeting. One per Review Screen
+   header, inside a polite live region so a screen reader hears the count change after a decision.
+
+   Presentational: the caller counts the Pending proposals and hands the number in. *@
+<div class="al-pending-counter-region d-inline-flex align-center" aria-live="polite">
+    <span class="al-pending-counter" id="@CounterId">@Text</span>
+
+    @if (Count == 0)
+    {
+        <MudLink Href="@ActionsHref" Class="ml-3" id="@ViewActionsId">@Voice.ViewActions</MudLink>
+    }
+</div>
+
+@code {
+    /// <summary>The counter's text element.</summary>
+    public const string CounterId = "pending-counter";
+
+    /// <summary>The "View actions" link, present only at zero.</summary>
+    public const string ViewActionsId = "pending-counter-view-actions";
+
+    /// <summary>How many proposals are still Pending.</summary>
+    [Parameter]
+    public int Count { get; set; }
+
+    /// <summary>The Meeting the Action List link filters to.</summary>
+    [Parameter]
+    [EditorRequired]
+    public Guid MeetingId { get; set; }
+
+    private string Text => Count switch
+    {
+        0 => Voice.AllProposalsDecided,
+        1 => Voice.OneProposalPending,
+        _ => Count.ToString(System.Globalization.CultureInfo.InvariantCulture) + Voice.ProposalsPendingSuffix,
+    };
+
+    private string ActionsHref => $"/actions?meetingId={MeetingId}";
+}

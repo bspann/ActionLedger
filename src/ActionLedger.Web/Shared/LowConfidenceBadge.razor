@@ -1,0 +1,20 @@
+@* DESIGN.md, Low Confidence badge — the warning icon and the text "Low confidence", so it is never
+   color alone. Whether to render it is the server's isLowConfidence flag, decided by the caller;
+   nothing here compares a threshold (AD-15).
+
+   Presentational. Run Detail's rows and the Review Screen's cards both render it. *@
+<span class="@CssClass">
+    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" aria-hidden="true" />
+    <span class="ml-1">@Voice.LowConfidence</span>
+</span>
+
+@code {
+    /// <summary>The class app.css colors the badge by.</summary>
+    public const string BaseClass = "al-low-confidence";
+
+    /// <summary>Extra classes for placement, such as a margin beside the Confidence Score.</summary>
+    [Parameter]
+    public string? Class { get; set; }
+
+    private string CssClass => $"{BaseClass} d-inline-flex align-center {Class}".TrimEnd();
+}

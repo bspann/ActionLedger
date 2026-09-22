@@ -33,18 +33,40 @@ public static class TextNormalization
     /// whitespace to a single space, and trims. Never returns <c>null</c>.
     /// </summary>
     /// <param name="text">Any text; <c>null</c> normalizes to the empty string.</param>
-    public static string Normalize(string? text)
+    public static string Normalize(string? text) => Normalize(text, out _);
+
+    /// <summary>
+    /// <see cref="Normalize(string?)"/>, also answering where each normalized character came from:
+    /// <paramref name="rawIndices"/>[i] is the index in <paramref name="text"/> of normalized
+    /// character i. <see cref="ExcerptLocator"/> maps a normalized match back to the raw notes
+    /// through it, so the one normalizer is also the one that knows the offsets (AD-11).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="string.ToLowerInvariant"/> keeps the UTF-16 length, so an index into the
+    /// lowercased text is an index into the raw text. A collapsed space maps to the first
+    /// whitespace character of the run it replaced.
+    /// </remarks>
+    /// <param name="text">Any text; <c>null</c> normalizes to the empty string.</param>
+    /// <param name="rawIndices">One raw index per character of the result, in order.</param>
+    internal static string Normalize(string? text, out IReadOnlyList<int> rawIndices)
     {
         if (string.IsNullOrEmpty(text))
         {
+            rawIndices = [];
+
             return string.Empty;
         }
 
         StringBuilder normalized = new(text.Length);
+        List<int> map = new(text.Length);
         bool pendingSpace = false;
+        int spaceIndex = 0;
+        string lowered = text.ToLowerInvariant();
 
-        foreach (char character in text.ToLowerInvariant())
+        for (int index = 0; index < lowered.Length; index++)
         {
+            char character = lowered[index];
+
             if (char.IsPunctuation(character) || char.IsSymbol(character))
             {
                 continue;
@@ -52,6 +74,11 @@ public static class TextNormalization
 
             if (char.IsWhiteSpace(character))
             {
+                if (!pendingSpace)
+                {
+                    spaceIndex = index;
+                }
+
                 // A run of whitespace of any length — including the newline of a hard wrap — becomes
                 // one space, and only once something follows it, so there is nothing to trim at the
                 // end and no leading space to trim at the start.
@@ -63,11 +90,15 @@ public static class TextNormalization
             if (pendingSpace)
             {
                 normalized.Append(' ');
+                map.Add(spaceIndex);
                 pendingSpace = false;
             }
 
             normalized.Append(character);
+            map.Add(index);
         }
+
+        rawIndices = map;
 
         return normalized.ToString();
     }

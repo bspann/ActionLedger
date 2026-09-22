@@ -365,7 +365,7 @@
                 // who has moved on should not be pulled back to this run when it lands.
                 if (!disposed)
                 {
-                    Navigation.NavigateTo(RunHref(started.Id));
+                    Navigation.NavigateTo(ReviewHref(started.Id));
                 }
 
                 return;
@@ -425,6 +425,9 @@
 
     /// <summary>Run Detail, nested under this meeting (EXPERIENCE.md, Information Architecture).</summary>
     private string RunHref(Guid runId) => $"/meetings/{Id}/runs/{runId}";
+
+    /// <summary>The Review Screen for a run, where a Succeeded run's proposals are decided.</summary>
+    private string ReviewHref(Guid runId) => $"/meetings/{Id}/runs/{runId}/review";
 
     public void Dispose() => disposed = true;
 

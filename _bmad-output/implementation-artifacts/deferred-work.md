@@ -183,3 +183,10 @@ source_spec: `spec-3-1-decision-domain-model-with-ordered-revisions-and-the-trac
 severity: medium
 reason: src/ActionLedger.Application/Meetings/MeetingsQueries.cs:60-68 builds new MeetingSummaryDto(..., runs.Count(...), 0) and its comment says "Story 3.1 replaces that last literal"; MeetingDtos.cs:8-11,18 and tests/Application.Tests/Meetings/MeetingsTests.cs:210,236,239-240 assert/describe 0. The 3.1 intent forbids Application changes, and no production path creates a Tracked Action until 3.2's endpoint, so the count is wrong only once decisions ship. Fix: a correlated count of tracked_actions joined via proposed_actions to extraction_runs.meeting_id, a per-meeting test seeding Tracked Actions, and the stale comments corrected.
 status: open
+
+### DW-24: NFR2 (a Review Screen with 50 proposals renders within 2 seconds on compose) has not been timed.
+origin: spec-deferred 1e7693bdaab7
+location: src/ActionLedger.Web/Features/Review/ReviewPage.razor
+source_spec: `spec-3-4-review-screen-layout-with-proposal-cards-and-source-highligh.md`
+reason: Only the bUnit test Fifty_proposals_render_in_the_order_received covers 50 proposals, and it checks order, not timing. To settle it, seed a run with 50 proposals and time the first render of its review route on compose in a browser.
+status: open

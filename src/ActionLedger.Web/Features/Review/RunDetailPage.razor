@@ -31,6 +31,12 @@
 
         <MudLink Href="@MeetingHref" Class="d-block mb-4" id="@BackToMeetingId">@Voice.BackToMeeting</MudLink>
 
+        @if (run is { Outcome: RunOutcome.Succeeded })
+        {
+            @* A Succeeded run has proposals to decide, and the Review Screen is where that happens. *@
+            <MudLink Href="@ReviewHref" Class="d-block mb-4" id="@ReviewId">@Voice.Review</MudLink>
+        }
+
         @if (failure is not null)
         {
             <LoadFailure Title="@failure.Title" OnRetry="LoadAsync" />
@@ -108,8 +114,8 @@
             <MudText Typo="Typo.h5" HtmlTag="h2" GutterBottom="true">@Voice.Proposals</MudText>
 
             @* Items in the order received: the API reads proposals by ordinal, and a re-sort here is
-               the one way AI order could be lost. The three decision cells are rendered, empty,
-               until Story 3.1 publishes decisions — they are part of what the row shows. *@
+               the one way AI order could be lost. The three decision cells are always rendered,
+               and stay empty while a proposal is Pending. *@
             <div id="@ProposalsId">
                 <MudTable T="RunProposal" Items="run.Proposals" Dense="true">
                     <HeaderContent>
@@ -126,12 +132,8 @@
                             <span class="al-confidence-score">@Confidence(context.Confidence)</span>
                             @if (context.IsLowConfidence)
                             {
-                                @* The server's flag, never a threshold compared here (AD-15). Icon
-                                   plus text, so it is never color alone. *@
-                                <span class="al-low-confidence d-inline-flex align-center ml-2">
-                                    <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" aria-hidden="true" />
-                                    <span class="ml-1">@Voice.LowConfidence</span>
-                                </span>
+                                @* The server's flag, never a threshold compared here (AD-15). *@
+                                <LowConfidenceBadge Class="ml-2" />
                             }
                         </MudTd>
                         <MudTd DataLabel="@Voice.ReviewState"><ReviewStateChip State="@context.ReviewState" /></MudTd>
@@ -150,6 +152,9 @@
 
 @code {
     public const string BackToMeetingId = "run-back-to-meeting";
+
+    /// <summary>The link to this run's Review Screen, shown only for a Succeeded run.</summary>
+    public const string ReviewId = "run-review";
 
     /// <summary>The definition list itself, so a test can assert it is a <c>dl</c> and not a table.</summary>
     public const string MetadataId = "run-metadata";
@@ -278,7 +283,7 @@
 
         try
         {
-            ReviewOutcome<Guid> outcome = await Review.StartRunAsync(meetingId);
+            ReviewOutcome<RunStarted> outcome = await Review.StartRunAsync(meetingId);
 
             if (outcome.Failure is { } problem)
             {
@@ -303,7 +308,7 @@
 
             if (!disposed)
             {
-                Navigation.NavigateTo($"/meetings/{meetingId}/runs/{outcome.Value}");
+                Navigation.NavigateTo($"/meetings/{meetingId}/runs/{outcome.Value!.Id}");
             }
         }
         finally
@@ -327,6 +332,8 @@
     });
 
     private string MeetingHref => $"/meetings/{MeetingId}";
+
+    private string ReviewHref => $"/meetings/{MeetingId}/runs/{RunId}/review";
 
     /// <summary>
     /// A count with group separators, invariantly, as <c>Formats.Count</c> renders its own: "0" is
