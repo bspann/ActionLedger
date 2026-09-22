@@ -23,7 +23,7 @@ public sealed class AiStartupCheckTests
     [Fact]
     public async Task A_valid_configuration_starts()
     {
-        await using ServiceProvider services = Provider(new AiSettings(FakeChatClientFactory.ProviderName, "v1", 90));
+        await using ServiceProvider services = Provider(new AiSettings(FakeChatClientFactory.ProviderName, "v1", 90, 0.70));
 
         IHostedService check = Assert.Single(services.GetServices<IHostedService>());
 
@@ -34,7 +34,7 @@ public sealed class AiStartupCheckTests
     [Fact]
     public async Task A_prompt_version_with_no_embedded_file_refuses_to_start()
     {
-        await using ServiceProvider services = Provider(new AiSettings(FakeChatClientFactory.ProviderName, "v99", 90));
+        await using ServiceProvider services = Provider(new AiSettings(FakeChatClientFactory.ProviderName, "v99", 90, 0.70));
 
         InvalidOperationException thrown = await Assert.ThrowsAsync<InvalidOperationException>(
             () => Started(services));
@@ -49,7 +49,7 @@ public sealed class AiStartupCheckTests
     [InlineData("AzureOpenAI")]
     public async Task A_provider_with_no_registered_factory_refuses_to_start(string provider)
     {
-        await using ServiceProvider services = Provider(new AiSettings(provider, "v1", 90));
+        await using ServiceProvider services = Provider(new AiSettings(provider, "v1", 90, 0.70));
 
         InvalidOperationException thrown = await Assert.ThrowsAsync<InvalidOperationException>(
             () => Started(services));
@@ -62,7 +62,7 @@ public sealed class AiStartupCheckTests
     [Fact]
     public void The_registration_resolves_the_whole_seam()
     {
-        using ServiceProvider services = Provider(new AiSettings(FakeChatClientFactory.ProviderName, "v1", 90));
+        using ServiceProvider services = Provider(new AiSettings(FakeChatClientFactory.ProviderName, "v1", 90, 0.70));
 
         Assert.IsType<ChatClientActionExtractor>(services.GetRequiredService<IActionExtractor>());
 
@@ -75,7 +75,7 @@ public sealed class AiStartupCheckTests
     [Fact]
     public void An_unregistered_provider_also_refuses_to_build_a_chat_client()
     {
-        using ServiceProvider services = Provider(new AiSettings("LocalOpenAI", "v1", 90));
+        using ServiceProvider services = Provider(new AiSettings("LocalOpenAI", "v1", 90, 0.70));
 
         InvalidOperationException thrown =
             Assert.Throws<InvalidOperationException>(services.GetRequiredService<IActionExtractor>);

@@ -50,7 +50,7 @@ builder.Services.AddActionLedgerAi(services =>
 {
     AiOptions ai = services.GetRequiredService<IOptions<AiOptions>>().Value;
 
-    return new AiSettings(ai.Provider, ai.PromptVersion, ai.CallTimeoutSeconds);
+    return new AiSettings(ai.Provider, ai.PromptVersion, ai.CallTimeoutSeconds, ai.LowConfidenceThreshold);
 });
 
 // AD-21 — the seeder is a hosted service in the api, gated on Seed:Enabled. Registered here,

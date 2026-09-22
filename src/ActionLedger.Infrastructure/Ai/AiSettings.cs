@@ -30,4 +30,14 @@ namespace ActionLedger.Infrastructure.Ai;
 /// NFR-1 — seconds allowed for one provider call. A run makes at most two, which is what keeps it
 /// inside the 180-second ceiling. Handed in here once; never re-read from configuration.
 /// </param>
-public sealed record AiSettings(string Provider, string? PromptVersion, int CallTimeoutSeconds);
+/// <param name="LowConfidenceThreshold">
+/// AD-15, FR-14 — the confidence below which a proposal is flagged, already validated to 0–1 by
+/// <c>AiOptions</c>. Infrastructure serves it to the Application ring through
+/// <see cref="ExtractionSettings"/> and <c>IExtractionSettings</c>, which is the only way that
+/// ring is allowed to read a setting (AD-16).
+/// </param>
+public sealed record AiSettings(
+    string Provider,
+    string? PromptVersion,
+    int CallTimeoutSeconds,
+    double LowConfidenceThreshold);

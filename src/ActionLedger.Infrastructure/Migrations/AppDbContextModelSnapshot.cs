@@ -22,6 +22,214 @@ namespace ActionLedger.Infrastructure.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("ActionLedger.Domain.Actions.ActionRevision", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<string>("Field")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("field");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("text")
+                        .HasColumnName("new_value");
+
+                    b.Property<DateTimeOffset>("OccurredAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("occurred_at");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("text")
+                        .HasColumnName("old_value");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence");
+
+                    b.Property<Guid>("TargetId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_id");
+
+                    b.Property<string>("TargetType")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("target_type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_action_revisions");
+
+                    b.HasIndex("TargetType", "TargetId", "Sequence")
+                        .HasDatabaseName("ix_action_revisions_target_type_target_id_sequence");
+
+                    b.ToTable("action_revisions");
+                });
+
+            modelBuilder.Entity("ActionLedger.Domain.Extraction.ExtractionRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_ms");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("input_tokens");
+
+                    b.Property<Guid>("MeetingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meeting_id");
+
+                    b.Property<Guid>("MeetingNotesId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("meeting_notes_id");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("NotesSha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character(64)")
+                        .HasColumnName("notes_sha256")
+                        .IsFixedLength();
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("outcome");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("integer")
+                        .HasColumnName("output_tokens");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("SchemaVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("schema_version");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("started_at");
+
+                    b.Property<Guid>("StartedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("started_by_user_id");
+
+                    b.PrimitiveCollection<string[]>("Warnings")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("warnings");
+
+                    b.HasKey("Id")
+                        .HasName("pk_extraction_runs");
+
+                    b.HasIndex("MeetingId")
+                        .HasDatabaseName("ix_extraction_runs_meeting_id");
+
+                    b.ToTable("extraction_runs");
+                });
+
+            modelBuilder.Entity("ActionLedger.Domain.Extraction.ProposedAction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("confidence");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("description");
+
+                    b.Property<Guid>("ExtractionRunId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("extraction_run_id");
+
+                    b.Property<int>("Ordinal")
+                        .HasColumnType("integer")
+                        .HasColumnName("ordinal");
+
+                    b.Property<string>("ReviewState")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("review_state");
+
+                    b.Property<string>("SourceExcerpt")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("source_excerpt");
+
+                    b.Property<DateOnly?>("SuggestedDueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("suggested_due_date");
+
+                    b.Property<string>("SuggestedOwner")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("suggested_owner");
+
+                    b.Property<uint>("xmin")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_proposed_actions");
+
+                    b.HasIndex("ExtractionRunId", "Ordinal")
+                        .IsUnique()
+                        .HasDatabaseName("ix_proposed_actions_extraction_run_id_ordinal");
+
+                    b.ToTable("proposed_actions", (string)null);
+                });
+
             modelBuilder.Entity("ActionLedger.Domain.Meetings.Meeting", b =>
                 {
                     b.Property<Guid>("Id")
@@ -114,6 +322,16 @@ namespace ActionLedger.Infrastructure.Migrations
                     b.ToTable("users");
                 });
 
+            modelBuilder.Entity("ActionLedger.Domain.Extraction.ProposedAction", b =>
+                {
+                    b.HasOne("ActionLedger.Domain.Extraction.ExtractionRun", null)
+                        .WithMany("Proposals")
+                        .HasForeignKey("ExtractionRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_proposed_actions_extraction_runs_extraction_run_id");
+                });
+
             modelBuilder.Entity("ActionLedger.Domain.Meetings.Meeting", b =>
                 {
                     b.OwnsOne("ActionLedger.Domain.Meetings.MeetingNotes", "Notes", b1 =>
@@ -158,6 +376,11 @@ namespace ActionLedger.Infrastructure.Migrations
                         });
 
                     b.Navigation("Notes");
+                });
+
+            modelBuilder.Entity("ActionLedger.Domain.Extraction.ExtractionRun", b =>
+                {
+                    b.Navigation("Proposals");
                 });
 #pragma warning restore 612, 618
         }

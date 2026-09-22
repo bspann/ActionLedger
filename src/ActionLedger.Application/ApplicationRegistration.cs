@@ -1,5 +1,7 @@
 using ActionLedger.Application.Auth;
+using ActionLedger.Application.Extraction;
 using ActionLedger.Application.Meetings;
+using ActionLedger.Application.Review;
 using ActionLedger.Application.Users;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -25,6 +27,13 @@ public static class ApplicationRegistration
         services.AddScoped<CreateMeetingHandler>();
         services.AddScoped<SaveMeetingNotesHandler>();
         services.AddScoped<MeetingsQueries>();
+
+        // Story 2.5 — the extraction use case and the two reads behind it. ProposedActionReadModel
+        // is registered in its own right because RunsQueries composes it and the Epic 3 Review
+        // Screen will resolve the same instance type (AD-9).
+        services.AddScoped<RunExtractionHandler>();
+        services.AddScoped<RunsQueries>();
+        services.AddScoped<ProposedActionReadModel>();
 
         return services;
     }

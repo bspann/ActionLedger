@@ -221,6 +221,48 @@ public sealed class ExtractionContractTests
         Assert.Contains("actions[0].description", failure, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// `minLength: 1` counts characters, so a description of spaces clears the bound above. It must
+    /// still fail here: `ProposedAction` refuses blank text, and a refusal that reaches the
+    /// aggregate leaves the POST with a 409 and no run row instead of the 201-with-Failed AD-11
+    /// fixes.
+    /// </summary>
+    [Theory]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    public void A_description_of_nothing_but_whitespace_fails(string description)
+    {
+        string? failure = ExtractionOutputValidator.Validate(Output(Proposal(description: description)));
+
+        Assert.NotNull(failure);
+        Assert.Contains("actions[0].description", failure, StringComparison.Ordinal);
+    }
+
+    /// <summary>The excerpt has the same bound and the same aggregate-side refusal behind it.</summary>
+    [Theory]
+    [InlineData(" ")]
+    [InlineData("   ")]
+    [InlineData("\t\n")]
+    public void An_excerpt_of_nothing_but_whitespace_fails(string excerpt)
+    {
+        string? failure = ExtractionOutputValidator.Validate(Output(Proposal(excerpt: excerpt)));
+
+        Assert.NotNull(failure);
+        Assert.Contains("actions[0].sourceExcerpt", failure, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Text that merely has whitespace around it is a real value and still passes — the validator
+    /// refuses blankness, it does not trim.
+    /// </summary>
+    [Fact]
+    public void Text_that_merely_has_whitespace_around_it_still_passes()
+    {
+        Assert.Null(ExtractionOutputValidator.Validate(
+            Output(Proposal(description: "  Draft the memo  ", excerpt: "  Dana will draft it.  "))));
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(100)]

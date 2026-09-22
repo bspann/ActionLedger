@@ -12,6 +12,12 @@
   <!-- ApplicationRegistration owns this ring's DI wiring. Abstractions only — allowlisted above. -->
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <!--
+      NFR-4 — RunExtractionHandler writes the one ExtractionRunCompleted event per completed run,
+      so this ring needs ILogger<T>. Abstractions only, and on AD-1's allowlist since the first
+      commit; Story 2.5 is the first code to use it.
+    -->
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
   <!--

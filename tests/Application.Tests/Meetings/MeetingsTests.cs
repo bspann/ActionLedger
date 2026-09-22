@@ -1,6 +1,7 @@
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Meetings;
 using ActionLedger.Domain.Common;
+using ActionLedger.Domain.Extraction;
 using ActionLedger.Domain.Meetings;
 using ActionLedger.Domain.Users;
 using Xunit;
@@ -197,15 +198,46 @@ public sealed class MeetingsTests
     }
 
     [Fact]
-    public async Task The_counts_are_published_as_zero_until_runs_and_tracked_actions_exist()
+    public async Task A_meeting_with_no_runs_reports_a_run_count_of_zero()
     {
         MeetingsQueries queries = Over(NewMeeting("Weekly sync"));
 
         MeetingSummaryDto summary = Assert.Single(
             (await queries.ListAsync(null, null, TestContext.Current.CancellationToken)).Items);
 
+        // A correlated count, not a join: a Meeting with no runs still appears, with 0.
         Assert.Equal(0, summary.RunCount);
         Assert.Equal(0, summary.TrackedActionCount);
+    }
+
+    [Fact]
+    public async Task The_run_count_is_this_meetings_real_number_while_tracked_actions_stay_zero()
+    {
+        Meeting busy = NewMeeting("Weekly sync");
+        Meeting quiet = NewMeeting("Solo review", new DateOnly(2026, 9, 17), Now);
+
+        // Two runs on one Meeting and one on another, so a count that ignored the correlation —
+        // or counted every run in the table — would answer 3 for both rows.
+        MeetingsQueries queries = new(new FakeReadDb(
+            busy,
+            quiet,
+            RunFor(busy, ExtractionOutcome.Succeeded),
+            RunFor(busy, ExtractionOutcome.Failed),
+            RunFor(quiet, ExtractionOutcome.Succeeded)));
+
+        IReadOnlyList<MeetingSummaryDto> items =
+            (await queries.ListAsync(null, null, TestContext.Current.CancellationToken)).Items;
+
+        MeetingSummaryDto busySummary = items.Single(meeting => meeting.Id == busy.Id);
+        MeetingSummaryDto quietSummary = items.Single(meeting => meeting.Id == quiet.Id);
+
+        // A failed run is still a run: the Meeting List counts attempts, not successes.
+        Assert.Equal(2, busySummary.RunCount);
+        Assert.Equal(1, quietSummary.RunCount);
+
+        // Story 3.1 replaces the last literal. Until then it stays 0 whatever the runs did.
+        Assert.Equal(0, busySummary.TrackedActionCount);
+        Assert.Equal(0, quietSummary.TrackedActionCount);
     }
 
     [Fact]
@@ -305,6 +337,18 @@ public sealed class MeetingsTests
 
     private static Meeting NewMeeting(string title, DateOnly held, DateTimeOffset created) =>
         Meeting.Create(title, held, ["Dana Whitfield"], Actor, created);
+
+    /// <summary>A run against a Meeting, with no notes needed: the list counts rows, not content.</summary>
+    private static ExtractionRun RunFor(Meeting meeting, ExtractionOutcome outcome) =>
+        ExtractionRun.Start(
+            meeting.Id,
+            Guid.CreateVersion7(),
+            new string('a', 64),
+            Actor,
+            new ExtractionRunMetadata("Fake", "fixture-catalog", "v1", "1", Now, 12, 0, 0),
+            outcome,
+            outcome == ExtractionOutcome.Failed ? "Both attempts failed validation." : null,
+            warnings: null);
 
     /// <summary>The write seam over a list. It adds and loads; it never saves (AD-10).</summary>
     private sealed class FakeMeetingRepository(params Meeting[] existing) : IMeetingRepository

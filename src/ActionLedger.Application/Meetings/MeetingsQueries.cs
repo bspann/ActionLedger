@@ -1,4 +1,5 @@
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Domain.Extraction;
 using ActionLedger.Domain.Meetings;
 
 namespace ActionLedger.Application.Meetings;
@@ -28,6 +29,12 @@ public sealed class MeetingsQueries(IReadDb readDb)
 
         IQueryable<Meeting> meetings = readDb.Query<Meeting>();
 
+        // Hoisted out of the projection on purpose. Composing the correlated count below against
+        // this local is translatable; calling readDb.Query<ExtractionRun>() *inside* the Select
+        // would put a method call on a captured object into the expression tree, which EF cannot
+        // translate and would answer with a client-evaluation failure at runtime.
+        IQueryable<ExtractionRun> runs = readDb.Query<ExtractionRun>();
+
         // Counted before the window is applied, so `total` is every matching row rather than the
         // length of this page (Consistency Conventions, Paging row).
         int total = await readDb.CountAsync(meetings, cancellationToken);
@@ -50,13 +57,14 @@ public sealed class MeetingsQueries(IReadDb readDb)
             // Narrowing is safe: offset < total, and total is an int.
             .Skip((int)offset)
             .Take(normalizedPageSize)
-            // The counts have no source table yet. Story 2.5 adds runs and Story 3.1 adds tracked
-            // actions; each replaces one literal here and the published shape does not move.
+            // The run count is a correlated subquery rather than a join, so a Meeting with no runs
+            // still appears, with 0. The tracked-action count has no source table yet: Story 3.1
+            // replaces that last literal, and the published shape does not move when it does.
             .Select(meeting => new MeetingSummaryDto(
                 meeting.Id,
                 meeting.Title,
                 meeting.MeetingDate,
-                0,
+                runs.Count(run => run.MeetingId == meeting.Id),
                 0));
 
         IReadOnlyList<MeetingSummaryDto> items = await readDb.ToListAsync(window, cancellationToken);

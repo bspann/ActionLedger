@@ -71,5 +71,5 @@ public sealed class PromptCatalogTests
         Assert.Equal("v99", new PromptCatalog(Settings("v99")).Current);
     }
 
-    private static AiSettings Settings(string? promptVersion) => new("Fake", promptVersion, 90);
+    private static AiSettings Settings(string? promptVersion) => new("Fake", promptVersion, 90, 0.70);
 }
