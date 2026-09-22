@@ -167,3 +167,19 @@ severity: medium
 reason: `AiOptions.LocalOpenAI.Model` and `AiOptions.AzureOpenAI.Model` are free strings with no `[StringLength]`, while `ExtractionRunMetadata.Validated()` throws `DomainRuleException` for a blank or over-200-character model — and `ApiExceptionHandler` maps that to 409, after the provider call, with no `ExtractionRun` persisted. That is the outcome AD-11 exists to prevent, and it would fail on every run rather than once. Unreachable today: the Fake is the only registered provider and supplies `fixture-catalog`, its own constant, so nothing operator-supplied reaches the guard. `AiOptions` is Story 2.4's file, so the missing bound predates this story; 2.5 is only the first code that turns it into a status code. What would settle it: when Story 2.7 wires LM Studio, Ollama and Azure OpenAI, decide whether the options bind with `[StringLength]` tied to the Domain constants and fail at startup (with the constant-agreement test `ProposedActionShapeTests` already models for the validator bounds), or
 resolution: Story 2.7 (`spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md`) made `AiOptionsValidator` refuse an active provider's model longer than `ExtractionRunMetadata.ModelMaxLength` at startup, naming the key; `StartupValidationTests` pins a 201-character model.
 status: resolved
+
+### DW-22: Application and Web doc comments still say the decision-copy DTO fields are "Story 3.1's" and "Always null until Story 3.1", which is now stale because Decide writes them while the DTO does not
+origin: spec-deferred 13bbd0f78f86
+location: src/ActionLedger.Application/Review/ProposedActionDtos.cs:14
+source_spec: `spec-3-1-decision-domain-model-with-ordered-revisions-and-the-tracked.md`
+severity: low
+reason: src/ActionLedger.Application/Review/ProposedActionDtos.cs:14-15 and src/ActionLedger.Web/Features/Review/Data/ReviewService.cs:91,152-154. This spec forbids Application and Web changes in 3.1. The comments should be corrected by the story that publishes the fields (3.4 read model / 3.2 DTOs).
+status: open
+
+### DW-23: MeetingsQueries.ListAsync still publishes a literal 0 for MeetingSummaryDto.trackedActionCount, although tracked_actions now exists; no test seeds a Tracked Action under a meeting.
+origin: spec-deferred e0cd972f4b9c
+location: src/ActionLedger.Application/Meetings/MeetingsQueries.cs:63
+source_spec: `spec-3-1-decision-domain-model-with-ordered-revisions-and-the-tracked.md`
+severity: medium
+reason: src/ActionLedger.Application/Meetings/MeetingsQueries.cs:60-68 builds new MeetingSummaryDto(..., runs.Count(...), 0) and its comment says "Story 3.1 replaces that last literal"; MeetingDtos.cs:8-11,18 and tests/Application.Tests/Meetings/MeetingsTests.cs:210,236,239-240 assert/describe 0. The 3.1 intent forbids Application changes, and no production path creates a Tracked Action until 3.2's endpoint, so the count is wrong only once decisions ship. Fix: a correlated count of tracked_actions joined via proposed_actions to extraction_runs.meeting_id, a per-meeting test seeding Tracked Actions, and the stale comments corrected.
+status: open

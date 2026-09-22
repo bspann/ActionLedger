@@ -9,9 +9,9 @@ namespace ActionLedger.Domain.Actions;
 /// </summary>
 /// <remarks>
 /// <para>
-/// Revisions are created only inside an aggregate method — in this story
-/// <c>ExtractionRun.AddProposals</c>, and later <c>ProposedAction.Decide</c>,
-/// <c>TrackedAction.Transition</c> and <c>TrackedAction.Edit</c>. That is why the constructor is
+/// Revisions are created only inside an aggregate method — <c>ExtractionRun.AddProposals</c> and
+/// <c>ProposedAction.Decide</c>, and later <c>TrackedAction.Transition</c> and
+/// <c>TrackedAction.Edit</c>. That is why the constructor and every factory are
 /// <c>internal</c>: an interceptor cannot know the actor or the kind, and a caller outside the
 /// aggregate could write a row the aggregate never agreed to.
 /// </para>
@@ -28,10 +28,18 @@ namespace ActionLedger.Domain.Actions;
 /// </remarks>
 public sealed class ActionRevision : AggregateRoot
 {
-    /// <summary>The longest field name a <c>FieldEdit</c> revision can name. Story 3.2's business.</summary>
+    /// <summary>The longest field name a <c>FieldEdit</c> revision can name.</summary>
     public const int FieldMaxLength = 100;
 
-    /// <summary>The first sequence number. A brand-new target has no prior revisions.</summary>
+    /// <summary>The field a <see cref="RevisionKind.ReviewDecision"/> revision names.</summary>
+    public const string ReviewStateField = "ReviewState";
+
+    /// <summary>
+    /// The first sequence number, which a brand-new target's first revision takes — with one
+    /// exception: the FieldEdits a decision writes against the Tracked Action it just created
+    /// continue from the ReviewDecision's sequence (3, 4, 5…) instead of starting here, so the
+    /// Audit Trail sorts them after the decision.
+    /// </summary>
     public const int FirstSequence = 1;
 
     private ActionRevision(
@@ -76,7 +84,10 @@ public sealed class ActionRevision : AggregateRoot
     /// <summary>What kind of change this row records.</summary>
     public RevisionKind Kind { get; private set; }
 
-    /// <summary>The field that changed, for a <c>FieldEdit</c>. <c>null</c> on every other kind.</summary>
+    /// <summary>
+    /// The field that changed: the edited field's name for a <c>FieldEdit</c>,
+    /// <see cref="ReviewStateField"/> for a <c>ReviewDecision</c>, and <c>null</c> for an <c>AiProposal</c>.
+    /// </summary>
     public string? Field { get; private set; }
 
     /// <summary>The value before the change. <c>null</c> when there was no before.</summary>
@@ -117,5 +128,63 @@ public sealed class ActionRevision : AggregateRoot
             oldValue: null,
             newValue: proposalJson,
             actorUserId: null,
+            occurredAt.ToUniversalTime());
+
+    /// <summary>
+    /// The AD-7 ReviewDecision revision: one per decision, minted inside
+    /// <c>ProposedAction.Decide</c> against the proposal it decides.
+    /// </summary>
+    /// <param name="proposedActionId">The proposal that was decided.</param>
+    /// <param name="sequence">The proposal's next sequence.</param>
+    /// <param name="oldValue">The Review State the proposal left.</param>
+    /// <param name="newValue">The Review State it entered, with a rejection's reason appended.</param>
+    /// <param name="actorUserId">The User who decided (AD-12).</param>
+    /// <param name="occurredAt">The one instant every revision from this call shares.</param>
+    internal static ActionRevision ReviewDecision(
+        Guid proposedActionId,
+        int sequence,
+        string oldValue,
+        string newValue,
+        Guid actorUserId,
+        DateTimeOffset occurredAt) =>
+        new(
+            RevisionTargetType.ProposedAction,
+            proposedActionId,
+            sequence,
+            RevisionKind.ReviewDecision,
+            ReviewStateField,
+            oldValue,
+            newValue,
+            actorUserId,
+            occurredAt.ToUniversalTime());
+
+    /// <summary>
+    /// The AD-7 FieldEdit revision: one per field a human changed, minted inside
+    /// <c>ProposedAction.Decide</c> against the Tracked Action the edit created.
+    /// </summary>
+    /// <param name="trackedActionId">The Tracked Action whose field this records.</param>
+    /// <param name="sequence">The next sequence in the decision's run of revisions.</param>
+    /// <param name="field">The changed field's name.</param>
+    /// <param name="oldValue">The value before the change, as text; <c>null</c> when there was none.</param>
+    /// <param name="newValue">The value after the change, as text; <c>null</c> when it was cleared.</param>
+    /// <param name="actorUserId">The User who made the change (AD-12).</param>
+    /// <param name="occurredAt">The one instant every revision from this call shares.</param>
+    internal static ActionRevision FieldEdit(
+        Guid trackedActionId,
+        int sequence,
+        string field,
+        string? oldValue,
+        string? newValue,
+        Guid actorUserId,
+        DateTimeOffset occurredAt) =>
+        new(
+            RevisionTargetType.TrackedAction,
+            trackedActionId,
+            sequence,
+            RevisionKind.FieldEdit,
+            field,
+            oldValue,
+            newValue,
+            actorUserId,
             occurredAt.ToUniversalTime());
 }

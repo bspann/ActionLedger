@@ -157,6 +157,10 @@ public sealed class RunsQueriesTests
             ],
             Now);
 
+        // One decided proposal, so PendingCount cannot pass by agreeing with ProposalCount.
+        succeeded.Proposals[1].Decide(
+            DecisionKind.Rejected, new DecisionEdits(null, null, null, null, Reason: null), Dana.Id, Now);
+
         ExtractionRun failed = ExtractionRun.Start(
             meeting.Id, meeting.Notes!.Id, NotesSha256, Guid.CreateVersion7(), Metrics,
             ExtractionOutcome.Failed, Reason, []);
@@ -174,7 +178,7 @@ public sealed class RunsQueriesTests
         Assert.Equal(ExtractionOutcome.Succeeded, newest.Outcome);
         Assert.Null(newest.FailureReason);
         Assert.Equal(3, newest.ProposalCount);
-        Assert.Equal(3, newest.PendingCount);
+        Assert.Equal(2, newest.PendingCount);
 
         RunSummaryDto older = runs[1];
 
