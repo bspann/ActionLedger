@@ -6,7 +6,7 @@ status: 'done'
 baseline_commit: '5d2e5036a13387ac713bf7314cebe32598a0ff1c'
 baseline_revision: '5d2e5036a13387ac713bf7314cebe32598a0ff1c'
 review_loop_iteration: 0
-followup_review_recommended: true
+followup_review_recommended: true  # owed; the pass halted on `no subagents`, not run inline
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-1-context.md'
   - '{project-root}/_bmad-output/implementation-artifacts/spec-1-6-login-screen-session-shell-and-global-state-patterns.md'
@@ -607,3 +607,34 @@ Patched counts by verdict: high 0, medium 8, low 4.
   topology; the unit guards can only catch edits to the files they read.
 - **`receiver` is absent by design.** Story 5.2 adds it, along with `Webhooks:Receiver:*`, which are
   deliberately not in `.env.example` yet.
+
+### Follow-up review pass — attempted 2026-09-21, HALTED
+
+The follow-up pass this spec asks for has **not** been run. Run `20260921-171838-dfcf` dispatched
+it and halted with `CRITICAL escalation: no subagents`: all four layers reported "Spawned
+successfully", then sat idle for 23 minutes with no result; a direct request to each inbox drew no
+reply over a further 5 minutes; and a control probe — a subagent whose entire task was to reply
+with one word using no tools — behaved identically. The probe rules out a large diff or one wedged
+reviewer: the mechanism is not delivering results in this environment. The same escalation stopped
+story 1.6's follow-up pass earlier the same day.
+
+That pass planned, implemented, and changed nothing. Its only edits were to this spec's `status`
+and this section, both of which are reverted here: the implementation genuinely reached `done` at
+the end of the first pass, as recorded in commit `e7c66ed`, and the first pass's 31 triage rows
+stand untouched.
+
+**It was deliberately not run inline instead.** Step-04 specifies every layer as context-free, and
+a session that has already read this spec, its intent contract, and the diff is primed to accept
+the claims it is supposed to test. An inline pass would be *a* review, not the one this spec is
+owed, and recording it as convergence would be false. `followup_review_recommended` stays `true`.
+
+**The two unverified risks the first pass named are both environment risks, and CI closes them by
+running rather than by reading:**
+
+1. `proxy_pass $upstream$request_uri` with the `NGINX_RESOLVER` default has only ever been
+   exercised on macOS/arm64 against Docker's embedded DNS.
+2. The CI smoke step has only ever been run locally, never on a GitHub amd64 runner.
+
+`e7c66ed` wires `ci.yml` to build all three images, parse the compose file against the placeholder
+env, start the stack and probe it. Opening this story's pull request therefore exercises both risks
+on amd64 directly — stronger evidence than any review layer could produce.

@@ -42,7 +42,7 @@ development_status:
   1-4-sign-in-and-receive-a-jwt-list-users: done
   1-5-blazor-webassembly-scaffold-with-mudblazor-theme-tokens-and: done
   1-6-login-screen-session-shell-and-global-state-patterns: done
-  1-7-one-command-compose-environment-with-migrate-api-and-web: backlog
+  1-7-one-command-compose-environment-with-migrate-api-and-web: done
   epic-1-retrospective: optional
 
   epic-2: backlog
