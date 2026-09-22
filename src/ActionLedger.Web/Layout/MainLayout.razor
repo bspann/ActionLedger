@@ -41,7 +41,11 @@
 
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.Large" Gutters="true">
-            @Body
+            @* The page's main landmark. MudAppBar is the banner; without this every page's content
+               sat outside any landmark (axe: landmark-one-main, region). *@
+            <main>
+                @Body
+            </main>
         </MudContainer>
     </MudMainContent>
 </MudLayout>

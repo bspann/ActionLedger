@@ -10,6 +10,10 @@
    Shared chips take parameters and raise EventCallbacks. Nothing here is a generated type, and
    nothing here compares a confidence threshold or searches the notes (AD-15).
 
+   FR-11, FR-12, FR-13 — the cards' decisions land here. One decision is in flight at a time,
+   and the run is read again after it rather than patched: the decision answer carries no
+   display names, and the refreshed run is the one source of a decided card (AD-15).
+
    The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to. *@
 
 @inject ReviewService Review
@@ -18,6 +22,8 @@
 @inject ISnackbar Snackbar
 @inject IScrollManager Scroll
 @inject IBrowserViewportService Viewport
+@inject UserDirectory Directory
+@inject IDialogService Dialogs
 @implements IAsyncDisposable
 
 @if (Session.IsSignedIn)
@@ -35,8 +41,10 @@
 
         @if (review is not null)
         {
+            @* The meeting link sits in a line of text, so it is underlined: its color alone does not
+               set it apart from the text around it (axe: link-in-text-block). *@
             <p class="al-review-meta" id="@MetaId">
-                <MudLink Href="@MeetingHref" id="@MeetingLinkId">@review.MeetingTitle</MudLink>@(Voice.MetaSeparator)<span id="@StartedId">@Formats.Instant(review.StartedAt)</span>@(Voice.MetaSeparator)<span id="@ProviderId">@review.Provider</span>@(Voice.MetaSeparator)<span id="@ModelId">@review.Model</span>@(Voice.MetaSeparator)<span id="@PromptVersionId">@review.PromptVersion</span>
+                <MudLink Href="@MeetingHref" id="@MeetingLinkId" Underline="Underline.Always">@review.MeetingTitle</MudLink>@(Voice.MetaSeparator)<span id="@StartedId">@Formats.Instant(review.StartedAt)</span>@(Voice.MetaSeparator)<span id="@ProviderId">@review.Provider</span>@(Voice.MetaSeparator)<span id="@ModelId">@review.Model</span>@(Voice.MetaSeparator)<span id="@PromptVersionId">@review.PromptVersion</span>
             </p>
         }
 
@@ -146,6 +154,18 @@
     private bool running;
     private bool disposed;
 
+    /// <summary>
+    /// Set while a decision is being made — from the Reject dialog opening, or the POST leaving,
+    /// until the refresh after it lands. Every card's writes are disabled meanwhile.
+    /// </summary>
+    private bool deciding;
+
+    /// <summary>
+    /// Proposals whose decision answered 403. Their cards stay disabled until the page is loaded
+    /// again (EXPERIENCE.md, State Patterns, "403").
+    /// </summary>
+    private readonly HashSet<Guid> forbidden = [];
+
     /// <summary>The route the current state belongs to, so a navigation to another run or meeting reloads.</summary>
     private Guid? loadedRunId;
     private Guid? loadedMeetingId;
@@ -189,6 +209,7 @@
         loadedMeetingId = MeetingId;
         review = null;
         activeId = null;
+        forbidden.Clear();
 
         await LoadAsync();
     }
@@ -223,6 +244,10 @@
     {
         failure = null;
         notFound = false;
+
+        // The owner picker's roster. A failed load is swallowed into an empty roster, which
+        // leaves "Unassigned" as the only choice rather than holding the screen up.
+        await Directory.EnsureLoadedAsync();
 
         ReviewOutcome<ReviewScreen> outcome = await Review.GetReviewAsync(MeetingId, RunId);
 
@@ -395,6 +420,193 @@
         StateHasChanged();
     });
 
+    /// <summary>A plain Approve or edit mode's primary. No confirmation (EXPERIENCE.md).</summary>
+    private async Task ApproveAsync(Guid proposalId, ProposalValues values)
+    {
+        if (!TryClaimDecision(proposalId))
+        {
+            return;
+        }
+
+        try
+        {
+            await DecideAsync(proposalId, () => Review.ApproveAsync(proposalId, values));
+        }
+        finally
+        {
+            deciding = false;
+        }
+    }
+
+    /// <summary>
+    /// Reject confirms in a dialog. The claim is taken before it opens, for the reason
+    /// MeetingDetailPage's SaveNotesAsync gives, so a second click cannot stack a second dialog.
+    /// </summary>
+    private async Task RejectAsync(Guid proposalId)
+    {
+        if (!TryClaimDecision(proposalId))
+        {
+            return;
+        }
+
+        try
+        {
+            // The dialog puts focus in its reason field itself, so MudBlazor's own initial focus
+            // is switched off rather than left to race it. Escape dismisses, as Cancel does.
+            IDialogReference dialog = await Dialogs.ShowAsync<RejectDialog>(
+                Voice.RejectDialogTitle,
+                new DialogOptions { DefaultFocus = DefaultFocus.None, CloseOnEscapeKey = true });
+            DialogResult? result = await dialog.Result;
+
+            if (result is null or { Canceled: true })
+            {
+                // Dismissed: nothing is sent, and the finally hands the buttons back.
+                return;
+            }
+
+            string? reason = result.Data as string;
+
+            await DecideAsync(proposalId, () => Review.RejectAsync(proposalId, reason));
+        }
+        finally
+        {
+            deciding = false;
+        }
+    }
+
+    /// <summary>
+    /// Claims the one decision slot. A decision on a card that is gone, decided, or refused
+    /// returns at once — which is what makes a stale snackbar Retry harmless.
+    /// </summary>
+    private bool TryClaimDecision(Guid proposalId)
+    {
+        if (deciding || disposed || forbidden.Contains(proposalId)
+            || review?.Proposals.Any(proposal => proposal.Id == proposalId && proposal.ReviewState is ReviewState.Pending) is not true)
+        {
+            return false;
+        }
+
+        // The explicit render is for the Retry caller, which comes in through InvokeAsync and is
+        // not the event pipeline, so nothing else would draw the buttons disabled.
+        deciding = true;
+        StateHasChanged();
+
+        return true;
+    }
+
+    /// <summary>Sends one decision and handles its answer. The caller holds the claim.</summary>
+    private async Task DecideAsync(Guid proposalId, Func<Task<ReviewOutcome<ReviewState>>> send)
+    {
+        ReviewOutcome<ReviewState> outcome = await send();
+
+        if (outcome.Failure is not { } problem)
+        {
+            await RefreshAsync();
+
+            return;
+        }
+
+        switch (problem.StatusCode)
+        {
+            case 401:
+                // SessionMessageHandler has already signed out and redirected.
+                return;
+
+            case 403:
+                // The handler raised "Your role does not allow this."; this card's controls stay
+                // disabled until the page is loaded again. No Retry: it would answer the same.
+                forbidden.Add(proposalId);
+
+                return;
+
+            case 409:
+                // The handler raised "Already changed. Reloading."; the reload is this page's half.
+                await RefreshAsync();
+
+                return;
+        }
+
+        // EXPERIENCE.md, "Save failure or network error": the title with a Retry, and the form
+        // values kept — they are the card's own state, which @key preserves.
+        Snackbar.Add(
+            problem.Title,
+            Severity.Error,
+            options =>
+            {
+                options.Action = Voice.Retry;
+                options.ActionColor = Color.Primary;
+                options.OnClick = _ => RetryDecisionAsync(proposalId, send);
+            });
+    }
+
+    /// <summary>
+    /// The snackbar's Retry: the same decision with the same values or reason, and no dialog.
+    /// Dispatched onto the renderer for the reason RunDetailPage gives.
+    /// </summary>
+    private Task RetryDecisionAsync(Guid proposalId, Func<Task<ReviewOutcome<ReviewState>>> send) =>
+        disposed ? Task.CompletedTask : InvokeAsync(async () =>
+        {
+            if (!TryClaimDecision(proposalId))
+            {
+                return;
+            }
+
+            try
+            {
+                await DecideAsync(proposalId, send);
+            }
+            finally
+            {
+                deciding = false;
+            }
+
+            StateHasChanged();
+        });
+
+    /// <summary>
+    /// Reads the run again after a decision or a 409. Unlike <see cref="LoadAsync"/>, a failure
+    /// keeps the screen as it is and offers a Retry; the active card and the notes panel stay.
+    /// </summary>
+    private async Task RefreshAsync()
+    {
+        Guid meetingId = MeetingId;
+        Guid runId = RunId;
+
+        ReviewOutcome<ReviewScreen> outcome = await Review.GetReviewAsync(meetingId, runId);
+
+        // The route moved on while this was in flight; the new route's load owns the screen.
+        if (disposed || loadedMeetingId != meetingId || loadedRunId != runId)
+        {
+            return;
+        }
+
+        if (outcome.Failure is { } problem)
+        {
+            if (problem.StatusCode is not 401)
+            {
+                Snackbar.Add(
+                    problem.Title,
+                    Severity.Error,
+                    options =>
+                    {
+                        options.Action = Voice.Retry;
+                        options.ActionColor = Color.Primary;
+                        options.OnClick = _ => RetryRefreshAsync();
+                    });
+            }
+
+            return;
+        }
+
+        review = outcome.Value;
+    }
+
+    private Task RetryRefreshAsync() => disposed ? Task.CompletedTask : InvokeAsync(async () =>
+    {
+        await RefreshAsync();
+        StateHasChanged();
+    });
+
     /// <summary>The cards, in AI order: the order received, never re-sorted here.</summary>
     private RenderFragment Cards => @<text>
         @foreach (ReviewProposal proposal in review!.Proposals)
@@ -402,7 +614,11 @@
             <ProposalCard @key="proposal.Id"
                           Proposal="@proposal"
                           IsActive="@(proposal.Id == activeId)"
-                          OnActivate="@(() => Activate(proposal))" />
+                          Owners="@Directory.Users"
+                          WritesDisabled="@(deciding || forbidden.Contains(proposal.Id))"
+                          OnActivate="@(() => Activate(proposal))"
+                          OnApprove="@(values => ApproveAsync(proposal.Id, values))"
+                          OnReject="@(() => RejectAsync(proposal.Id))" />
         }
     </text>;
 

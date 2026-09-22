@@ -396,6 +396,18 @@ public static class Voice
     /// <summary>A Pending card's outlined button.</summary>
     public const string Edit = "Edit";
 
-    /// <summary>A Pending card's text button.</summary>
+    /// <summary>A Pending card's text button, and the Reject dialog's confirm.</summary>
     public const string Reject = "Reject";
+
+    /// <summary>
+    /// EXPERIENCE.md, Proposal card — the edit-mode primary while at least one field differs from
+    /// the proposed value. It reads <see cref="Approve"/> again when nothing differs.
+    /// </summary>
+    public const string ApproveWithEdits = "Approve with edits";
+
+    /// <summary>The Reject dialog's title.</summary>
+    public const string RejectDialogTitle = "Reject this proposal?";
+
+    /// <summary>The Reject dialog's reason field label. The reason is never required.</summary>
+    public const string RejectReasonLabel = "Reason (optional)";
 }

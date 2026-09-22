@@ -144,6 +144,21 @@
     margin-top: 16px;
 }
 
+/* MudBlazor's buttons and links draw nothing different when focused from the keyboard (their
+   computed background and shadow are the same focused or not), so a keyboard user cannot see
+   where they are. The same ring the proposal card uses, on keyboard focus only. */
+.mud-button-root:focus-visible,
+.mud-link:focus-visible {
+    outline: 2px solid var(--mud-palette-primary);
+    outline-offset: 2px;
+}
+
+/* On the primary-colored app bar a primary ring would vanish; the bar's own text color shows. */
+.mud-appbar .mud-button-root:focus-visible,
+.mud-appbar .mud-link:focus-visible {
+    outline-color: currentColor;
+}
+
 .al-proposal:focus-visible {
     outline: 2px solid var(--mud-palette-primary);
     outline-offset: 2px;
@@ -203,6 +218,26 @@
 .al-proposal-column-heading {
     font-weight: 500;
     margin-bottom: 4px;
+}
+
+/* Edit mode — the description full width, then owner and due date side by side (the mockup's
+   row2), with the owner hint kept under the select. */
+.al-proposal-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin: 12px 0 8px;
+}
+
+.al-proposal-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    align-items: start;
+}
+
+.al-proposal-edit-owner .al-owner-hint {
+    margin-top: 4px;
 }
 
 /* DESIGN.md — the Source Excerpt is a blockquote on the AI provenance container. */

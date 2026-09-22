@@ -9,7 +9,7 @@ namespace ActionLedger.Web.Features.Review.Data;
 /// <summary>
 /// AD-14 — the Review feature's HTTP seam, built on the <c>MeetingsService</c> shape. Run Detail
 /// reads a run and starts another one through it, and the Review Screen reads a run with its
-/// Meeting. Nothing generated leaves this file.
+/// Meeting and decides its proposals. Nothing generated leaves this file.
 /// </summary>
 /// <remarks>
 /// It keeps its own <see cref="CallAsync{T}"/> and <see cref="ReviewOutcome{T}"/> rather than
@@ -97,6 +97,66 @@ public sealed class ReviewService(IActionLedgerApiClient client)
             },
             cancellationToken);
 
+    /// <summary>
+    /// Approves a proposal with the values the reviewer settled on. The server alone decides
+    /// whether that is Approved or Edited, by diffing them against the proposal; the answer is the
+    /// Review State it recorded. No actor and no time are sent: both are the server's (AD-12).
+    /// </summary>
+    public Task<ReviewOutcome<ReviewState>> ApproveAsync(
+        Guid proposalId,
+        ProposalValues values,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+
+        return DecideAsync(
+            proposalId,
+            new DecideProposalCommand
+            {
+                Decision = ReviewVerb.Approve,
+                Description = values.Description,
+                OwnerUserId = values.OwnerUserId,
+                DueDate = ToWire(values.DueDate),
+                Reason = null,
+            },
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Rejects a proposal. The reason is optional: it goes trimmed, and a blank one goes as
+    /// <c>null</c>, which the Review Screen reads back as "No reason given".
+    /// </summary>
+    public Task<ReviewOutcome<ReviewState>> RejectAsync(
+        Guid proposalId,
+        string? reason,
+        CancellationToken cancellationToken = default) =>
+        DecideAsync(
+            proposalId,
+            new DecideProposalCommand
+            {
+                Decision = ReviewVerb.Reject,
+                Reason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim(),
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// The one decision POST. <c>ProposalDecisionDto</c> carries no display names, so only the
+    /// state crosses back; the page refreshes the run for the rest (AD-15).
+    /// </summary>
+    private Task<ReviewOutcome<ReviewState>> DecideAsync(
+        Guid proposalId,
+        DecideProposalCommand command,
+        CancellationToken cancellationToken) =>
+        CallAsync(
+            async token =>
+            {
+                ProposalDecisionDto decision =
+                    await client.DecideProposedActionAsync(proposalId, command, token).ConfigureAwait(false);
+
+                return ToReviewState(decision.ReviewState);
+            },
+            cancellationToken);
+
     /// <summary>The same catch arms <c>MeetingsService</c> documents.</summary>
     private static async Task<ReviewOutcome<T>> CallAsync<T>(
         Func<CancellationToken, Task<T>> call,
@@ -163,6 +223,13 @@ public sealed class ReviewService(IActionLedgerApiClient client)
     /// </summary>
     private static DateOnly? ToDate(DateTimeOffset? value) =>
         value is { } date ? DateOnly.FromDateTime(date.Date) : null;
+
+    /// <summary>
+    /// The inverse of <see cref="ToDate"/>: midnight at offset zero, so the day the converter
+    /// writes as <c>yyyy-MM-dd</c> is the day that was chosen, whatever the browser's time zone.
+    /// </summary>
+    private static DateTimeOffset? ToWire(DateOnly? value) =>
+        value is { } date ? new DateTimeOffset(date.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero) : null;
 
     private static RunOutcome ToOutcome(ExtractionOutcome outcome) =>
         outcome switch
@@ -282,6 +349,14 @@ public sealed record ReviewProposal(
     string? DecidedOwnerDisplayName,
     DateOnly? DecidedDueDate,
     ExcerptRange? Excerpt);
+
+/// <summary>
+/// The values an Approve sends: the proposal's own for a plain Approve, or the edited ones.
+/// </summary>
+/// <param name="Description">The Tracked Action's description, sent as typed.</param>
+/// <param name="OwnerUserId">The owner, or <c>null</c> for Unassigned.</param>
+/// <param name="DueDate">The due date, or <c>null</c> for none.</param>
+public sealed record ProposalValues(string Description, Guid? OwnerUserId, DateOnly? DueDate);
 
 /// <summary>A range of UTF-16 code units in the notes, as the server located it.</summary>
 public sealed record ExcerptRange(int Start, int Length);

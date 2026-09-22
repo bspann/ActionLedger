@@ -190,3 +190,11 @@ location: src/ActionLedger.Web/Features/Review/ReviewPage.razor
 source_spec: `spec-3-4-review-screen-layout-with-proposal-cards-and-source-highligh.md`
 reason: Only the bUnit test Fifty_proposals_render_in_the_order_received covers 50 proposals, and it checks order, not timing. To settle it, seed a run with 50 proposals and time the first render of its review route on compose in a browser.
 status: open
+
+### DW-25: Compose as committed does not start, because the api image lacks the embedded prompts and fixtures.
+origin: spec-deferred 148c54768355
+location: src/ActionLedger.Api/Dockerfile
+source_spec: `spec-3-5-make-decisions-on-the-review-screen.md`
+severity: high
+reason: src/ActionLedger.Api/Dockerfile copies src/ but not prompts/ or fixtures/, which ActionLedger.Infrastructure.csproj embeds from ../../. The api container crashes on boot with "Ai:PromptVersion 'v1' has no embedded prompt file. Embedded prompt versions: []". The 3.5 browser checks ran on a scratchpad compose override that adds `COPY prompts/ prompts/` and `COPY fixtures/ fixtures/` after `COPY src/ src/`. The defect predates this story and blocks the compose demo.
+status: open
