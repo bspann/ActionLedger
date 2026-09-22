@@ -9,15 +9,17 @@ using ReviewState = ActionLedger.Web.Core.Extraction.ReviewState;
 namespace ActionLedger.Web.Tests;
 
 /// <summary>
-/// AD-14 — the Review feature's only door to the API. Run Detail's every field crosses here onto
-/// web-owned records, AI order survives the crossing, and the decision slots stay empty until the
-/// contract carries them.
+/// AD-14 — the Review feature's only door to the API. Run Detail's and the Review Screen's every
+/// field crosses here onto web-owned records, AI order survives the crossing, and the decision
+/// fields are the contract's, carried as-is.
 /// </summary>
 public sealed class ReviewServiceTests
 {
     private static readonly Guid MeetingId = Guid.Parse("01999999-0000-7000-8000-00000000beef");
 
     private static readonly Guid RunId = Guid.Parse("01999999-0000-7000-8000-0000000000aa");
+
+    private static readonly DateTimeOffset DecidedAt = new(2026, 9, 22, 14, 3, 0, TimeSpan.Zero);
 
     [Fact]
     public async Task Get_run_maps_every_FR6_field()
@@ -70,7 +72,7 @@ public sealed class ReviewServiceTests
     }
 
     [Fact]
-    public async Task Get_run_keeps_the_proposals_in_the_order_received_with_empty_decision_slots()
+    public async Task Get_run_keeps_the_proposals_in_the_order_received()
     {
         StubApiClient client = new();
 
@@ -96,14 +98,156 @@ public sealed class ReviewServiceTests
 
         Assert.Equal(ReviewState.Pending, proposals[0].ReviewState);
         Assert.Equal(ReviewState.Edited, proposals[1].ReviewState);
+    }
 
-        // Story 3.1 adds these to the contract; until then they are null, not invented.
-        Assert.All(proposals, proposal =>
+    [Fact]
+    public async Task Get_run_fills_the_decision_cells_from_the_decision_copy()
+    {
+        StubApiClient client = new();
+
+        ProposedActionDto pending = Proposal(0, "Order the replacement scanners.", 0.91, isLowConfidence: false, ApiReviewState.Pending);
+        ProposedActionDto rejected = Proposal(1, "Book the range.", 0.62, isLowConfidence: true, ApiReviewState.Rejected);
+        rejected.DecidedByUserId = Guid.CreateVersion7();
+        rejected.DecidedByDisplayName = "Dana Whitfield";
+        rejected.DecidedAt = DecidedAt;
+        rejected.RejectionReason = "discussion item, not an action";
+
+        client.Run.Proposals = [pending, rejected];
+
+        ReviewService service = new(client);
+
+        IReadOnlyList<RunProposal> proposals = (await service.GetRunAsync(RunId, TestContext.Current.CancellationToken)).Value!.Proposals;
+
+        Assert.Null(proposals[0].DecidedBy);
+        Assert.Null(proposals[0].DecidedAt);
+        Assert.Null(proposals[0].RejectionReason);
+
+        Assert.Equal("Dana Whitfield", proposals[1].DecidedBy);
+        Assert.Equal(DecidedAt, proposals[1].DecidedAt);
+        Assert.Equal("discussion item, not an action", proposals[1].RejectionReason);
+    }
+
+    [Fact]
+    public async Task Get_review_maps_the_run_the_meeting_and_every_proposal_field()
+    {
+        StubApiClient client = new();
+        client.Run.Id = RunId;
+        client.Run.MeetingId = MeetingId;
+        client.Meeting.Title = "Office move planning";
+        client.Meeting.Notes = new MeetingNotesDto
         {
-            Assert.Null(proposal.DecidedBy);
-            Assert.Null(proposal.DecidedAt);
-            Assert.Null(proposal.RejectionReason);
-        });
+            Id = Guid.Empty,
+            Text = "Dana will call Bob.",
+            Sha256 = new string('a', 64),
+            SavedAt = DateTimeOffset.UnixEpoch,
+        };
+
+        Guid owner = Guid.CreateVersion7();
+        Guid decider = Guid.CreateVersion7();
+        Guid tracked = Guid.CreateVersion7();
+
+        ProposedActionDto edited = Proposal(0, "Call Bob.", 0.55, isLowConfidence: true, ApiReviewState.Edited);
+        edited.SuggestedOwner = "dana";
+        edited.SuggestedOwnerUserId = owner;
+        edited.SuggestedOwnerDisplayName = "Dana Whitfield";
+        edited.SuggestedDueDate = new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
+        edited.DecidedByUserId = decider;
+        edited.DecidedByDisplayName = "Priya Raman";
+        edited.DecidedAt = DecidedAt;
+        edited.TrackedActionId = tracked;
+        edited.DecidedDescription = "Call Bob today.";
+        edited.DecidedOwnerUserId = owner;
+        edited.DecidedOwnerDisplayName = "Dana Whitfield";
+        edited.DecidedDueDate = new DateTimeOffset(2026, 10, 3, 0, 0, 0, TimeSpan.Zero);
+        edited.ExcerptStart = 0;
+        edited.ExcerptLength = 18;
+
+        ProposedActionDto unlocated = Proposal(1, "Book the range.", 0.91, isLowConfidence: false, ApiReviewState.Pending);
+
+        client.Run.Proposals = [edited, unlocated];
+
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewScreen> outcome = await service.GetReviewAsync(MeetingId, RunId, TestContext.Current.CancellationToken);
+
+        Assert.Null(outcome.Failure);
+        Assert.Equal(RunId, client.LastGetExtractionRunId);
+        Assert.Equal(MeetingId, client.LastGetMeetingId);
+
+        ReviewScreen screen = outcome.Value!;
+
+        Assert.Equal(RunId, screen.RunId);
+        Assert.Equal(MeetingId, screen.MeetingId);
+        Assert.Equal("Office move planning", screen.MeetingTitle);
+        Assert.Equal("Dana will call Bob.", screen.Notes);
+        Assert.Equal("Fake", screen.Provider);
+        Assert.Equal("fixture-catalog", screen.Model);
+        Assert.Equal("v1", screen.PromptVersion);
+        Assert.Equal(client.Run.StartedAt, screen.StartedAt);
+        Assert.Equal(RunOutcome.Succeeded, screen.Outcome);
+
+        Assert.Equal([0, 1], screen.Proposals.Select(proposal => proposal.Ordinal));
+
+        ReviewProposal first = screen.Proposals[0];
+
+        Assert.Equal("Call Bob.", first.Description);
+        Assert.Equal("dana", first.SuggestedOwner);
+        Assert.Equal(owner, first.SuggestedOwnerUserId);
+        Assert.Equal("Dana Whitfield", first.SuggestedOwnerDisplayName);
+        Assert.Equal(new DateOnly(2026, 10, 10), first.SuggestedDueDate);
+        Assert.Equal(0.55, first.Confidence);
+        Assert.True(first.IsLowConfidence);
+        Assert.Equal("Call Bob.", first.SourceExcerpt);
+        Assert.Equal(ReviewState.Edited, first.ReviewState);
+        Assert.Equal(decider, first.DecidedByUserId);
+        Assert.Equal("Priya Raman", first.DecidedByDisplayName);
+        Assert.Equal(DecidedAt, first.DecidedAt);
+        Assert.Null(first.RejectionReason);
+        Assert.Equal(tracked, first.TrackedActionId);
+        Assert.Equal("Call Bob today.", first.DecidedDescription);
+        Assert.Equal(owner, first.DecidedOwnerUserId);
+        Assert.Equal("Dana Whitfield", first.DecidedOwnerDisplayName);
+        Assert.Equal(new DateOnly(2026, 10, 3), first.DecidedDueDate);
+        Assert.Equal(new ExcerptRange(0, 18), first.Excerpt);
+
+        // No span on the wire is no range, never an invented one.
+        Assert.Null(screen.Proposals[1].Excerpt);
+        Assert.Null(screen.Proposals[1].SuggestedDueDate);
+    }
+
+    [Fact]
+    public async Task Get_review_of_a_meeting_without_notes_reads_empty_notes()
+    {
+        StubApiClient client = new();
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewScreen> outcome = await service.GetReviewAsync(MeetingId, RunId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(string.Empty, outcome.Value!.Notes);
+    }
+
+    [Fact]
+    public async Task Get_review_answers_404_when_the_meeting_is_missing()
+    {
+        StubApiClient client = new() { GetMeetingThrows = StubApiClient.Problem(404, "The resource was not found.") };
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewScreen> outcome = await service.GetReviewAsync(MeetingId, RunId, TestContext.Current.CancellationToken);
+
+        Assert.Null(outcome.Value);
+        Assert.Equal(404, outcome.Failure?.StatusCode);
+    }
+
+    [Fact]
+    public async Task Get_review_answers_404_when_the_run_is_missing_without_reading_the_meeting()
+    {
+        StubApiClient client = new() { GetExtractionRunThrows = StubApiClient.Problem(404, "The resource was not found.") };
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewScreen> outcome = await service.GetReviewAsync(MeetingId, RunId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(404, outcome.Failure?.StatusCode);
+        Assert.Equal(0, client.GetMeetingCalls);
     }
 
     [Theory]
@@ -133,10 +277,11 @@ public sealed class ReviewServiceTests
         StubApiClient client = new() { StartedRun = new RunDto { Id = newRun, Outcome = wire } };
         ReviewService service = new(client);
 
-        ReviewOutcome<Guid> outcome = await service.StartRunAsync(MeetingId, TestContext.Current.CancellationToken);
+        ReviewOutcome<RunStarted> outcome = await service.StartRunAsync(MeetingId, TestContext.Current.CancellationToken);
 
         Assert.Null(outcome.Failure);
-        Assert.Equal(newRun, outcome.Value);
+        Assert.Equal(newRun, outcome.Value!.Id);
+        Assert.Equal(wire is ExtractionOutcome.Succeeded ? RunOutcome.Succeeded : RunOutcome.Failed, outcome.Value.Outcome);
         Assert.Equal(MeetingId, client.LastStartExtractionRunId);
     }
 
@@ -158,7 +303,7 @@ public sealed class ReviewServiceTests
         StubApiClient client = new() { StartExtractionRunThrows = new HttpRequestException("no route to host") };
         ReviewService service = new(client);
 
-        ReviewOutcome<Guid> outcome = await service.StartRunAsync(MeetingId, TestContext.Current.CancellationToken);
+        ReviewOutcome<RunStarted> outcome = await service.StartRunAsync(MeetingId, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, outcome.Failure?.StatusCode);
         Assert.Equal(Voice.UnexpectedFailureTitle, outcome.Failure?.Title);

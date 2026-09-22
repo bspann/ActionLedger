@@ -1,0 +1,428 @@
+@page "/meetings/{MeetingId:guid}/runs/{RunId:guid}/review"
+@using ActionLedger.Web.Features.Review.Data
+@using MudBlazor.Services
+
+@* FR-10, FR-14 — the Review Screen: the run's proposals beside the notes they came from, with the
+   active card's Source Excerpt highlighted in the notes. Two panes from 1200px, each scrolling on
+   its own; below that the notes collapse into an expansion panel above the cards.
+
+   AD-14 — the one component in this screen that injects anything. NotesPane, ProposalCard and the
+   Shared chips take parameters and raise EventCallbacks. Nothing here is a generated type, and
+   nothing here compares a confidence threshold or searches the notes (AD-15).
+
+   The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to. *@
+
+@inject ReviewService Review
+@inject SessionState Session
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IScrollManager Scroll
+@inject IBrowserViewportService Viewport
+@implements IAsyncDisposable
+
+@if (Session.IsSignedIn)
+{
+    @if (notFound)
+    {
+        @* The parent of a run is its meeting, so that is where "Not found." points. *@
+        <NotFoundNotice ParentHref="@MeetingHref" ParentLabel="@Voice.BackToMeeting" />
+    }
+    else
+    {
+        @* Outside the load branches, for the reason MeetingDetailPage gives: FocusOnNavigate
+           looks once, while the GETs are still in flight. *@
+        <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="false">@Voice.ReviewProposals</MudText>
+
+        @if (review is not null)
+        {
+            <p class="al-review-meta" id="@MetaId">
+                <MudLink Href="@MeetingHref" id="@MeetingLinkId">@review.MeetingTitle</MudLink>@(Voice.MetaSeparator)<span id="@StartedId">@Formats.Instant(review.StartedAt)</span>@(Voice.MetaSeparator)<span id="@ProviderId">@review.Provider</span>@(Voice.MetaSeparator)<span id="@ModelId">@review.Model</span>@(Voice.MetaSeparator)<span id="@PromptVersionId">@review.PromptVersion</span>
+            </p>
+        }
+
+        <div class="al-review-header">
+            @if (review is { Proposals.Count: > 0 })
+            {
+                <PendingCounter Count="@PendingCount" MeetingId="@MeetingId" />
+            }
+
+            <MudLink Href="@MeetingHref" id="@BackToMeetingId">@Voice.BackToMeeting</MudLink>
+        </div>
+
+        @if (failure is not null)
+        {
+            <LoadFailure Title="@failure.Title" OnRetry="LoadAsync" />
+        }
+        else if (review is not null)
+        {
+            @if (review.Proposals.Count == 0)
+            {
+                <MudText Typo="Typo.body1" GutterBottom="true" id="@NoProposalsId">@Voice.NoProposals</MudText>
+
+                @* Disabled while its own POST is in flight, so a double click cannot start two runs. *@
+                <MudButton id="@RunAgainId"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@running"
+                           OnClick="RunAgainAsync">@Voice.RunAgain</MudButton>
+            }
+            else if (wide)
+            {
+                <div class="al-review-panes" id="@PanesId">
+                    <section class="al-review-pane al-review-notes-pane" id="@NotesPaneId" aria-label="@Voice.Notes">
+                        <NotesPane Text="@review.Notes" Highlight="@Highlight" />
+                    </section>
+
+                    <section class="al-review-pane al-review-cards" id="@CardsId" aria-label="@Voice.Proposals">
+                        @Cards
+                    </section>
+                </div>
+            }
+            else
+            {
+                @* 1024–1199px: the same notes, collapsed above the cards. Below 1024px is unsupported.
+                   KeepContentAlive keeps the mark in the DOM while collapsed, so the active card's
+                   aria-describedby always points at an element that exists. *@
+                <MudExpansionPanels Class="mb-4" Elevation="0" Outlined="true">
+                    <MudExpansionPanel Text="@Voice.Notes" id="@NotesPanelId" KeepContentAlive="true" Expanded="@notesExpanded" ExpandedChanged="OnNotesExpandedChanged">
+                        <NotesPane Text="@review.Notes" Highlight="@Highlight" />
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+
+                <section class="al-review-cards" id="@CardsId" aria-label="@Voice.Proposals">
+                    @Cards
+                </section>
+            }
+        }
+    }
+}
+
+@code {
+    public const string MetaId = "review-meta";
+
+    public const string MeetingLinkId = "review-meeting-link";
+
+    public const string StartedId = "review-started";
+
+    public const string ProviderId = "review-provider";
+
+    public const string ModelId = "review-model";
+
+    public const string PromptVersionId = "review-prompt-version";
+
+    public const string BackToMeetingId = "review-back-to-meeting";
+
+    /// <summary>The two-pane grid, rendered only at 1200px and wider.</summary>
+    public const string PanesId = "review-panes";
+
+    /// <summary>The left pane at 1200px and wider.</summary>
+    public const string NotesPaneId = "review-notes-pane";
+
+    /// <summary>The collapsed notes panel from 1024 to 1199px.</summary>
+    public const string NotesPanelId = "review-notes-panel";
+
+    /// <summary>The cards, in whichever layout.</summary>
+    public const string CardsId = "review-cards";
+
+    public const string NoProposalsId = "review-no-proposals";
+
+    public const string RunAgainId = "review-run-again";
+
+    /// <summary>DESIGN.md: two panes from here up, and the collapsed panel below it.</summary>
+    public const int TwoPaneMinWidth = 1200;
+
+    /// <summary>Where the login redirect sends an unauthenticated visitor.</summary>
+    private const string LoginRoute = "/login";
+
+    [Parameter]
+    public Guid MeetingId { get; set; }
+
+    [Parameter]
+    public Guid RunId { get; set; }
+
+    private ReviewScreen? review;
+    private ApiFailure? failure;
+    private bool notFound;
+    private bool running;
+    private bool disposed;
+
+    /// <summary>The route the current state belongs to, so a navigation to another run or meeting reloads.</summary>
+    private Guid? loadedRunId;
+    private Guid? loadedMeetingId;
+
+    /// <summary>Whether the narrow layout's notes panel is open.</summary>
+    private bool notesExpanded;
+
+    /// <summary>The card whose excerpt is highlighted, or <c>null</c> before any card is activated.</summary>
+    private Guid? activeId;
+
+    /// <summary>Set when a newly active card has a highlight to bring into view after the render.</summary>
+    private bool scrollPending;
+
+    /// <summary>Set when an activation changed nothing, so the render it would trigger is skipped.</summary>
+    private bool skipRender;
+
+    /// <summary>An unknown width is treated as wide: the two-pane layout is the designed one.</summary>
+    private bool wide = true;
+
+    private readonly Guid viewportObserverId = Guid.NewGuid();
+    private bool viewportSubscribed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Session.IsSignedIn)
+        {
+            Session.CaptureAttemptedRoute("/" + Navigation.ToBaseRelativePath(Navigation.Uri));
+            Navigation.NavigateTo(LoginRoute);
+
+            return;
+        }
+
+        // "Run again" navigates from one run's review to another's, and the router reuses this
+        // component for it: the parameters change but OnInitialized does not run again.
+        if (loadedRunId == RunId && loadedMeetingId == MeetingId)
+        {
+            return;
+        }
+
+        loadedRunId = RunId;
+        loadedMeetingId = MeetingId;
+        review = null;
+        activeId = null;
+
+        await LoadAsync();
+    }
+
+    protected override bool ShouldRender()
+    {
+        if (skipRender)
+        {
+            skipRender = false;
+
+            return false;
+        }
+
+        return true;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && Session.IsSignedIn)
+        {
+            await ReadViewportAsync();
+        }
+
+        if (scrollPending)
+        {
+            scrollPending = false;
+            await Scroll.ScrollIntoViewAsync("#" + NotesPane.HighlightId, ScrollBehavior.Smooth);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        failure = null;
+        notFound = false;
+
+        ReviewOutcome<ReviewScreen> outcome = await Review.GetReviewAsync(MeetingId, RunId);
+
+        if (outcome.Failure is { } problem)
+        {
+            if (problem.StatusCode is 404)
+            {
+                notFound = true;
+            }
+            else
+            {
+                failure = problem;
+            }
+
+            return;
+        }
+
+        // A run that exists but belongs to another meeting is not at this address.
+        if (outcome.Value!.MeetingId != MeetingId)
+        {
+            notFound = true;
+
+            return;
+        }
+
+        // A Failed run has nothing to review; its detail is where the reason is shown. Replace, so
+        // Back does not land here and bounce again.
+        if (outcome.Value.Outcome is RunOutcome.Failed)
+        {
+            Navigation.NavigateTo(RunDetailHref(RunId), replace: true);
+
+            return;
+        }
+
+        review = outcome.Value;
+    }
+
+    /// <summary>
+    /// Reads the width once, and then follows it. MudBlazor's breakpoints do not include 1200px, so
+    /// the subscription asks for every resize rather than breakpoint changes only.
+    /// </summary>
+    private async Task ReadViewportAsync()
+    {
+        BrowserWindowSize? size = await Viewport.GetCurrentBrowserWindowSizeAsync();
+
+        if (ApplyWidth(size?.Width))
+        {
+            StateHasChanged();
+        }
+
+        await Viewport.SubscribeAsync(
+            viewportObserverId,
+            args =>
+            {
+                if (!disposed && ApplyWidth(args.BrowserWindowSize?.Width))
+                {
+                    _ = InvokeAsync(StateHasChanged);
+                }
+            },
+            new ResizeOptions { NotifyOnBreakpointOnly = false },
+            fireImmediately: false);
+
+        viewportSubscribed = true;
+    }
+
+    /// <summary>Sets the layout from a width, and answers whether that changed it.</summary>
+    private bool ApplyWidth(int? width)
+    {
+        bool isWide = width is not > 0 || width >= TwoPaneMinWidth;
+
+        if (isWide == wide)
+        {
+            return false;
+        }
+
+        wide = isWide;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Hover, focus inside, or a click on the quote. Activating the card that is already active
+    /// changes nothing, so it neither re-renders nor scrolls again.
+    /// </summary>
+    private void Activate(ReviewProposal proposal)
+    {
+        if (activeId == proposal.Id)
+        {
+            skipRender = true;
+
+            return;
+        }
+
+        activeId = proposal.Id;
+
+        // A collapsed panel's mark is not visible, and scrolling to it would move the page instead.
+        scrollPending = proposal.Excerpt is not null && (wide || notesExpanded);
+    }
+
+    /// <summary>
+    /// Opening the narrow layout's panel brings the active card's mark, which it kept while
+    /// collapsed, into view.
+    /// </summary>
+    private void OnNotesExpandedChanged(bool expanded)
+    {
+        notesExpanded = expanded;
+        scrollPending = expanded && Highlight is not null;
+    }
+
+    /// <summary>
+    /// Starts another run against this run's meeting. A Succeeded run opens its review, and a
+    /// Failed run its detail, where the reason is shown.
+    /// </summary>
+    private async Task RunAgainAsync()
+    {
+        if (running || review is null)
+        {
+            return;
+        }
+
+        // Captured before the await, for the reason RunDetailPage gives.
+        Guid meetingId = review.MeetingId;
+        running = true;
+        StateHasChanged();
+
+        try
+        {
+            ReviewOutcome<RunStarted> outcome = await Review.StartRunAsync(meetingId);
+
+            if (outcome.Failure is { } problem)
+            {
+                // SessionMessageHandler already raised these, and none of them is worth a Retry.
+                if (problem.StatusCode is 401 or 403 or 409)
+                {
+                    return;
+                }
+
+                Snackbar.Add(
+                    problem.Title,
+                    Severity.Error,
+                    options =>
+                    {
+                        options.Action = Voice.Retry;
+                        options.ActionColor = Color.Primary;
+                        options.OnClick = _ => RetryRunAgainAsync();
+                    });
+
+                return;
+            }
+
+            if (!disposed)
+            {
+                RunStarted started = outcome.Value!;
+
+                Navigation.NavigateTo(started.Outcome is RunOutcome.Succeeded
+                    ? $"/meetings/{meetingId}/runs/{started.Id}/review"
+                    : $"/meetings/{meetingId}/runs/{started.Id}");
+            }
+        }
+        finally
+        {
+            running = false;
+        }
+    }
+
+    /// <summary>The snackbar's Retry, dispatched onto the renderer for the reason RunDetailPage gives.</summary>
+    private Task RetryRunAgainAsync() => disposed ? Task.CompletedTask : InvokeAsync(async () =>
+    {
+        await RunAgainAsync();
+        StateHasChanged();
+    });
+
+    /// <summary>The cards, in AI order: the order received, never re-sorted here.</summary>
+    private RenderFragment Cards => @<text>
+        @foreach (ReviewProposal proposal in review!.Proposals)
+        {
+            <ProposalCard @key="proposal.Id"
+                          Proposal="@proposal"
+                          IsActive="@(proposal.Id == activeId)"
+                          OnActivate="@(() => Activate(proposal))" />
+        }
+    </text>;
+
+    private ExcerptRange? Highlight =>
+        review?.Proposals.FirstOrDefault(proposal => proposal.Id == activeId)?.Excerpt;
+
+    /// <summary>The server's Review State, counted; nothing is derived beyond the count.</summary>
+    private int PendingCount => review?.Proposals.Count(proposal => proposal.ReviewState is ReviewState.Pending) ?? 0;
+
+    private string MeetingHref => $"/meetings/{MeetingId}";
+
+    private string RunDetailHref(Guid runId) => $"/meetings/{MeetingId}/runs/{runId}";
+
+    public async ValueTask DisposeAsync()
+    {
+        disposed = true;
+
+        if (viewportSubscribed)
+        {
+            await Viewport.UnsubscribeAsync(viewportObserverId);
+        }
+    }
+}
