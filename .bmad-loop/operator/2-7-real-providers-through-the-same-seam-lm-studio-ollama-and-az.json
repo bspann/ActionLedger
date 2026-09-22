@@ -1,0 +1,13 @@
+{
+  "actions": [
+    "Download an instruct chat model in LM Studio 0.4.25 (7B or larger, so it honours json_schema response_format), load it, and start the local server on port 1234 (`lms server start`).",
+    "Run `curl -s http://localhost:1234/v1/models`, then set `Ai__Provider=LocalOpenAI`, `Ai__LocalOpenAI__BaseUrl=http://host.docker.internal:1234/v1`, and `Ai__LocalOpenAI__Model=<the id exactly as /models lists it>` in `.env`, and restart the stack with `docker compose up -d --build`.",
+    "Confirm the api starts and logs `AI provider verified. Provider LocalOpenAI`, then sign in, open a meeting whose notes are a fixture case (for example fixtures/extraction/office-move-planning.md), press Run extraction, and confirm the run is Succeeded with proposals on Run Detail inside 60 seconds.",
+    "Optionally, repeat the same check with Ollama 0.34.2 (`ollama pull <model>`, `Ai__LocalOpenAI__BaseUrl=http://host.docker.internal:11434/v1`, and the model id with its `:tag`), and, if Azure OpenAI is in scope, set `Ai__AzureOpenAI__Endpoint=https://<resource>.openai.azure.com/openai/v1/`, `Ai__AzureOpenAI__Model`, and `Ai__AzureOpenAI__ApiKey` from the Azure portal and repeat the run with `Ai__Provider=AzureOpenAI`.",
+    "Set `Ai__Provider=Fake` again in `.env` before the demo freeze, unless the demo is meant to run on the local model."
+  ],
+  "parked_at": "2026-09-22",
+  "run_id": "20260922-084720-0d04",
+  "spec_file": "_bmad-output/implementation-artifacts/spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md",
+  "story_key": "2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az"
+}
