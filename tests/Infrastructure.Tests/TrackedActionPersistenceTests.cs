@@ -1,4 +1,6 @@
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Application.Meetings;
+using ActionLedger.Application.Review;
 using ActionLedger.Domain.Actions;
 using ActionLedger.Domain.Extraction;
 using ActionLedger.Domain.Meetings;
@@ -14,9 +16,10 @@ using Xunit;
 namespace ActionLedger.Infrastructure.Tests;
 
 /// <summary>
-/// AD-4, AD-7 and AD-20 for Story 3.1 against a real PostgreSQL 18: the migration creates
-/// <c>tracked_actions</c> and the proposal's decision copy as specified, and a decision's proposal,
-/// Tracked Action and revisions round-trip through <c>AppDbContext</c>.
+/// AD-4, AD-7 and AD-20 for Stories 3.1 and 3.2 against a real PostgreSQL 18: the migration
+/// creates <c>tracked_actions</c> and the proposal's decision copy as specified, a decision's
+/// proposal, Tracked Action and revisions round-trip through <c>AppDbContext</c> — directly and
+/// through <see cref="DecideProposalHandler"/> — and the Meeting List counts what was tracked.
 /// </summary>
 [Collection(PostgresFixture.CollectionName)]
 public sealed class TrackedActionPersistenceTests(PostgresFixture postgres)
@@ -325,8 +328,166 @@ public sealed class TrackedActionPersistenceTests(PostgresFixture postgres)
     }
 
     // ---------------------------------------------------------------------------------------
+    // Through the handler (Story 3.2)
+    // ---------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(DecisionKind.Approved)]
+    [InlineData(DecisionKind.Edited)]
+    [InlineData(DecisionKind.Rejected)]
+    public async Task A_decision_committed_by_the_handler_keeps_the_copy_agreeing_with_its_revision(DecisionKind kind)
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await using ServiceProvider services = await MigratedHostAsync($"handler_copy_{kind}", cancellationToken);
+
+        ProposedAction proposal = await SavedPendingProposalAsync(services, cancellationToken);
+        User actor = await SavedUserAsync(services, "officer", "Olu Officer", cancellationToken);
+
+        DecideProposalCommand command = kind switch
+        {
+            // The proposal's own values, with no owner: its "Dana Whitfield" matches nobody here.
+            DecisionKind.Approved => new() { Decision = ReviewVerb.Approve, Description = "Order the replacement scanners.", DueDate = Proposed },
+            DecisionKind.Edited => new() { Decision = ReviewVerb.Approve, Description = "Book movers", OwnerUserId = actor.Id, DueDate = Proposed },
+            _ => new() { Decision = ReviewVerb.Reject, Reason = "  not an action " },
+        };
+
+        ProposalDecisionDto answer;
+
+        await using (AsyncServiceScope scope = services.CreateAsyncScope())
+        {
+            answer = await HandlerIn(scope, actor.Id).HandleAsync(proposal.Id, command, cancellationToken);
+        }
+
+        await using AsyncServiceScope check = services.CreateAsyncScope();
+        AppDbContext context = check.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        ProposedAction decided = await context.Set<ProposedAction>().AsNoTracking().SingleAsync(cancellationToken);
+
+        ActionRevision decision = await context.ActionRevisions
+            .AsNoTracking()
+            .SingleAsync(revision => revision.Kind == RevisionKind.ReviewDecision, cancellationToken);
+
+        AssertCopyAgreesWithDecision(decided, decision);
+
+        Assert.Equal(answer.ReviewState, decided.ReviewState);
+        Assert.Equal(actor.Id, decided.DecidedByUserId);
+        Assert.Equal(DecidedAt, decided.DecidedAt);
+
+        TrackedAction? tracked = await context.TrackedActions.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+
+        Assert.Equal(answer.TrackedActionId, tracked?.Id);
+        Assert.Equal(kind == DecisionKind.Rejected, tracked is null);
+
+        if (kind == DecisionKind.Rejected)
+        {
+            Assert.Equal("not an action", decided.RejectionReason);
+        }
+        else
+        {
+            Assert.Equal(kind == DecisionKind.Edited ? ReviewState.Edited : ReviewState.Approved, decided.ReviewState);
+            Assert.Equal(kind == DecisionKind.Edited ? actor.Id : null, tracked!.OwnerUserId);
+        }
+    }
+
+    [Fact]
+    public async Task The_meeting_list_counts_each_meetings_tracked_actions_in_sql()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await using ServiceProvider services = await MigratedHostAsync(nameof(The_meeting_list_counts_each_meetings_tracked_actions_in_sql), cancellationToken);
+
+        User actor = await SavedUserAsync(services, "officer", "Olu Officer", cancellationToken);
+
+        // Two meetings, two proposals each; only the busy one's are decided, one each way.
+        (Guid busy, IReadOnlyList<Guid> busyProposals) = await SavedMeetingWithProposalsAsync(services, "Busy sync", 3, cancellationToken);
+        (Guid quiet, _) = await SavedMeetingWithProposalsAsync(services, "Quiet sync", 2, cancellationToken);
+
+        await DecideThroughHandlerAsync(services, actor.Id, busyProposals[0], new() { Decision = ReviewVerb.Approve, Description = "Scanners 0", DueDate = Proposed }, cancellationToken);
+        await DecideThroughHandlerAsync(services, actor.Id, busyProposals[1], new() { Decision = ReviewVerb.Approve, Description = "Edited", DueDate = null }, cancellationToken);
+        await DecideThroughHandlerAsync(services, actor.Id, busyProposals[2], new() { Decision = ReviewVerb.Reject }, cancellationToken);
+
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+
+        // The real read seam, so the correlated count through proposal and run is translated by
+        // Npgsql rather than evaluated by LINQ to Objects.
+        MeetingsQueries queries = new(scope.ServiceProvider.GetRequiredService<IReadDb>());
+
+        IReadOnlyList<MeetingSummaryDto> items = (await queries.ListAsync(null, null, cancellationToken)).Items;
+
+        Assert.Equal(2, items.Single(meeting => meeting.Id == busy).TrackedActionCount);
+        Assert.Equal(0, items.Single(meeting => meeting.Id == quiet).TrackedActionCount);
+        Assert.Equal(1, items.Single(meeting => meeting.Id == busy).RunCount);
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Helpers
     // ---------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The handler over the real ports in <paramref name="scope"/>, with the actor a token would
+    /// have carried and the instant a clock would have read.
+    /// </summary>
+    private static DecideProposalHandler HandlerIn(AsyncServiceScope scope, Guid actorUserId) =>
+        new(
+            scope.ServiceProvider.GetRequiredService<IExtractionRunRepository>(),
+            scope.ServiceProvider.GetRequiredService<IActionRepository>(),
+            scope.ServiceProvider.GetRequiredService<IActionRevisionRepository>(),
+            scope.ServiceProvider.GetRequiredService<IReadDb>(),
+            new FixedCurrentUser(actorUserId),
+            new FixedClock(DecidedAt),
+            scope.ServiceProvider.GetRequiredService<IUnitOfWork>());
+
+    private static async Task DecideThroughHandlerAsync(
+        IServiceProvider services,
+        Guid actorUserId,
+        Guid proposalId,
+        DecideProposalCommand command,
+        CancellationToken cancellationToken)
+    {
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+
+        await HandlerIn(scope, actorUserId).HandleAsync(proposalId, command, cancellationToken);
+    }
+
+    private static async Task<(Guid MeetingId, IReadOnlyList<Guid> ProposalIds)> SavedMeetingWithProposalsAsync(
+        IServiceProvider services,
+        string title,
+        int count,
+        CancellationToken cancellationToken)
+    {
+        Meeting meeting = Meeting.Create(title, Held, ["Dana Whitfield"], Guid.CreateVersion7(), Created);
+        meeting.AttachNotes("Dana will order the scanners.", Created);
+
+        ExtractionRun run = ExtractionRun.Start(
+            meeting.Id, meeting.Notes!.Id, meeting.Notes.Sha256, Guid.CreateVersion7(),
+            Metrics, ExtractionOutcome.Succeeded, null, warnings: null);
+
+        IReadOnlyList<ActionRevision> revisions = run.AddProposals(
+            [.. Enumerable.Range(0, count).Select(index => new ProposedActionDraft($"Scanners {index}", "Facilities", Proposed, 0.91, "Dana will order the scanners."))],
+            Created);
+
+        await using AsyncServiceScope scope = services.CreateAsyncScope();
+
+        scope.ServiceProvider.GetRequiredService<IMeetingRepository>().Add(meeting);
+        scope.ServiceProvider.GetRequiredService<IExtractionRunRepository>().Add(run);
+        scope.ServiceProvider.GetRequiredService<IActionRevisionRepository>().AddRange(revisions);
+        await scope.ServiceProvider.GetRequiredService<IUnitOfWork>().CommitAsync(cancellationToken);
+
+        return (meeting.Id, [.. run.Proposals.Select(proposal => proposal.Id)]);
+    }
+
+    private sealed class FixedCurrentUser(Guid userId) : ICurrentUser
+    {
+        public Guid UserId { get; } = userId;
+
+        public string DisplayName => "Olu Officer";
+
+        public Role Role => Role.ActionOfficer;
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset UtcNow { get; } = now;
+    }
 
     /// <summary>
     /// The agreement Story 3.2 relies on: the proposal's fast-read copy says what the ReviewDecision
@@ -378,7 +539,7 @@ public sealed class TrackedActionPersistenceTests(PostgresFixture postgres)
     {
         if (result.TrackedAction is not null)
         {
-            scope.ServiceProvider.GetRequiredService<AppDbContext>().TrackedActions.Add(result.TrackedAction);
+            scope.ServiceProvider.GetRequiredService<IActionRepository>().Add(result.TrackedAction);
         }
 
         scope.ServiceProvider.GetRequiredService<IActionRevisionRepository>().AddRange(result.Revisions);
@@ -387,8 +548,8 @@ public sealed class TrackedActionPersistenceTests(PostgresFixture postgres)
 
     /// <summary>
     /// Loads the run, decides its proposal, and commits the whole result in one unit of work — the
-    /// shape Story 3.2's handler will have. There is no Tracked Action repository port yet, so the
-    /// root is added through the context directly.
+    /// shape <see cref="DecideProposalHandler"/> has, without its validation, so a test can reach
+    /// the database with a result the handler would have refused.
     /// </summary>
     private static async Task<DecisionResult> DecideAndSaveAsync(
         IServiceProvider services,
