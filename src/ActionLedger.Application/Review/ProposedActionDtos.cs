@@ -8,11 +8,16 @@ namespace ActionLedger.Application.Review;
 /// disagree about whether a proposal is flagged or whose name was matched.
 /// </summary>
 /// <remarks>
-/// <see cref="IsLowConfidence"/> and <see cref="SuggestedOwnerUserId"/> are derived server-side and
-/// carried on the wire (AD-15): the web never recomputes either. The decision fields AD-13 also
-/// lists — <c>decidedByUserId</c>, <c>decidedByDisplayName</c>, <c>decidedAt</c>,
-/// <c>rejectionReason</c>, <c>trackedActionId</c> — are stored since Story 3.1 and written since
-/// Story 3.2, but are published here only with the Review Screen that renders them (Story 3.4).
+/// <para>
+/// <see cref="IsLowConfidence"/>, <see cref="SuggestedOwnerUserId"/> and the excerpt span are
+/// derived server-side and carried on the wire (AD-15): the web never recomputes any of them.
+/// </para>
+/// <para>
+/// The decision fields are the proposal's decision copy. The <c>Decided*</c> values and
+/// <see cref="TrackedActionId"/> are the Tracked Action's current values, so they are <c>null</c>
+/// for Pending and Rejected proposals, which have none. In Epic 3 they equal the values at decision
+/// time; the FieldEdit revisions, not this shape, are the audit record.
+/// </para>
 /// </remarks>
 /// <param name="Id">The proposal's id.</param>
 /// <param name="Ordinal">The zero-based position in the provider's answer. Reads come back in this order.</param>
@@ -30,6 +35,21 @@ namespace ActionLedger.Application.Review;
 /// matches nobody, or matches more than one. Never an assignment — only a pre-selection (AD-9).
 /// </param>
 /// <param name="ReviewState">Where the proposal stands. <c>Pending</c> until a decision moves it, once.</param>
+/// <param name="SuggestedOwnerDisplayName">The display name of the User <see cref="SuggestedOwnerUserId"/> names, or <c>null</c>.</param>
+/// <param name="DecidedByUserId">Who decided, or <c>null</c> while Pending.</param>
+/// <param name="DecidedByDisplayName">The decider's display name, system users included, or <c>null</c> while Pending.</param>
+/// <param name="DecidedAt">When it was decided, in UTC, or <c>null</c> while Pending.</param>
+/// <param name="RejectionReason">A rejection's reason, or <c>null</c> — including on a rejection that gave none.</param>
+/// <param name="TrackedActionId">The Tracked Action an approval or edit created, or <c>null</c>.</param>
+/// <param name="DecidedDescription">The Tracked Action's description, or <c>null</c>.</param>
+/// <param name="DecidedOwnerUserId">The Tracked Action's owner, or <c>null</c> — for no Tracked Action, or for Unassigned.</param>
+/// <param name="DecidedOwnerDisplayName">That owner's display name, or <c>null</c>.</param>
+/// <param name="DecidedDueDate">The Tracked Action's due date, or <c>null</c>.</param>
+/// <param name="ExcerptStart">
+/// The UTF-16 offset in the run's notes where <see cref="SourceExcerpt"/> starts, by
+/// <c>ExcerptLocator</c>'s normalized match, or <c>null</c> when it is not found.
+/// </param>
+/// <param name="ExcerptLength">The span's length in UTF-16 code units, or <c>null</c> with <see cref="ExcerptStart"/>.</param>
 public sealed record ProposedActionDto(
     Guid Id,
     int Ordinal,
@@ -40,4 +60,16 @@ public sealed record ProposedActionDto(
     string SourceExcerpt,
     bool IsLowConfidence,
     Guid? SuggestedOwnerUserId,
-    ReviewState ReviewState);
+    ReviewState ReviewState,
+    string? SuggestedOwnerDisplayName,
+    Guid? DecidedByUserId,
+    string? DecidedByDisplayName,
+    DateTimeOffset? DecidedAt,
+    string? RejectionReason,
+    Guid? TrackedActionId,
+    string? DecidedDescription,
+    Guid? DecidedOwnerUserId,
+    string? DecidedOwnerDisplayName,
+    DateOnly? DecidedDueDate,
+    int? ExcerptStart,
+    int? ExcerptLength);

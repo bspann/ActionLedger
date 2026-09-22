@@ -23,7 +23,7 @@ namespace ActionLedger.Web.Tests;
 /// FR-6 and FR-9 — Run Detail. The metadata is a definition list carrying every FR-6 field with
 /// tokens as "0", warnings expand to the dropped excerpts verbatim, a Failed run shows its reason
 /// and "Run again", and the proposals render in AI order with a Review State chip and the three
-/// decision cells present and empty.
+/// decision cells, empty while Pending and filled from the decision copy once decided.
 /// </summary>
 public sealed class RunDetailPageTests : BunitContext
 {
@@ -188,7 +188,7 @@ public sealed class RunDetailPageTests : BunitContext
             Assert.Equal(Voice.Pending, row.QuerySelector(".mud-chip")!.TextContent.Trim());
             Assert.Contains(ReviewStateChip.ModifierFor(Core.Extraction.ReviewState.Pending), row.QuerySelector(".mud-chip")!.ClassList);
 
-            // Visible cells, empty until Story 3.1 publishes decisions.
+            // Visible cells, empty while a proposal is Pending.
             Assert.Equal(string.Empty, row.QuerySelector(".al-decided-by")!.TextContent.Trim());
             Assert.Equal(string.Empty, row.QuerySelector(".al-decided-at")!.TextContent.Trim());
             Assert.Equal(string.Empty, row.QuerySelector(".al-rejection-reason")!.TextContent.Trim());
@@ -199,6 +199,53 @@ public sealed class RunDetailPageTests : BunitContext
         Assert.Equal(
             [Voice.Description, Voice.Confidence, Voice.ReviewState, Voice.DecidedBy, Voice.Decided, Voice.RejectionReason],
             headers);
+    }
+
+    [Fact]
+    public void A_decided_proposal_fills_its_decision_cells()
+    {
+        SignIn();
+
+        ProposedActionDto rejected = Proposal(0, "Book the range.", 0.62, isLowConfidence: false);
+        rejected.ReviewState = ApiReviewState.Rejected;
+        rejected.DecidedByUserId = Guid.CreateVersion7();
+        rejected.DecidedByDisplayName = "Dana Whitfield";
+        rejected.DecidedAt = new DateTimeOffset(2026, 9, 22, 14, 3, 30, TimeSpan.Zero);
+        rejected.RejectionReason = "discussion item, not an action";
+
+        client.Run = Run(proposals: [rejected]);
+
+        IRenderedComponent<RunDetailPage> page = RenderDetail();
+
+        IElement row = Assert.Single(Rows(page));
+
+        Assert.Equal("Dana Whitfield", row.QuerySelector(".al-decided-by")!.TextContent.Trim());
+        Assert.Equal("2026-09-22 14:03 UTC", row.QuerySelector(".al-decided-at")!.TextContent.Trim());
+        Assert.Equal("discussion item, not an action", row.QuerySelector(".al-rejection-reason")!.TextContent.Trim());
+    }
+
+    [Fact]
+    public void A_succeeded_run_links_to_its_review_screen()
+    {
+        SignIn();
+
+        IRenderedComponent<RunDetailPage> page = RenderDetail();
+
+        IElement review = page.Find($"#{RunDetailPage.ReviewId}");
+
+        Assert.Equal(Voice.Review, review.TextContent);
+        Assert.Equal($"/meetings/{MeetingId}/runs/{RunId}/review", review.GetAttribute("href"));
+    }
+
+    [Fact]
+    public void A_failed_run_has_no_review_link()
+    {
+        SignIn();
+        client.Run = Run(outcome: ExtractionOutcome.Failed, failureReason: Reason);
+
+        IRenderedComponent<RunDetailPage> page = RenderDetail();
+
+        Assert.Empty(page.FindAll($"#{RunDetailPage.ReviewId}"));
     }
 
     [Fact]

@@ -1358,7 +1358,19 @@
           "sourceExcerpt",
           "isLowConfidence",
           "suggestedOwnerUserId",
-          "reviewState"
+          "reviewState",
+          "suggestedOwnerDisplayName",
+          "decidedByUserId",
+          "decidedByDisplayName",
+          "decidedAt",
+          "rejectionReason",
+          "trackedActionId",
+          "decidedDescription",
+          "decidedOwnerUserId",
+          "decidedOwnerDisplayName",
+          "decidedDueDate",
+          "excerptStart",
+          "excerptLength"
         ],
         "type": "object",
         "properties": {
@@ -1410,6 +1422,89 @@
           },
           "reviewState": {
             "$ref": "#/components/schemas/ReviewState"
+          },
+          "suggestedOwnerDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "decidedByUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "decidedByDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "decidedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "rejectionReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "trackedActionId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "decidedDescription": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "decidedOwnerUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "decidedOwnerDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "decidedDueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "excerptStart": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "excerptLength": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },

@@ -90,8 +90,8 @@ public static class Voice
     public const string Runs = "Runs";
 
     /// <summary>
-    /// EXPERIENCE.md, Meeting table — the tracked-action count column. Zero until Story 3.1. The
-    /// Glossary spells it "Tracked Action", so the column keeps both capitals.
+    /// EXPERIENCE.md, Meeting table — the tracked-action count column. The Glossary spells it
+    /// "Tracked Action", so the column keeps both capitals.
     /// </summary>
     public const string TrackedActions = "Tracked Actions";
 
@@ -309,12 +309,93 @@ public static class Voice
     /// <summary>Run Detail's Review State column.</summary>
     public const string ReviewState = "Review state";
 
-    /// <summary>Run Detail's decider column. Empty until Story 3.1 publishes decisions.</summary>
+    /// <summary>Run Detail's decider column. Empty while a proposal is Pending.</summary>
     public const string DecidedBy = "Decided by";
 
-    /// <summary>Run Detail's decision-timestamp column. Empty until Story 3.1.</summary>
+    /// <summary>
+    /// Run Detail's decision-timestamp column, and the heading of an Edited card's decided-values
+    /// column on the Review Screen. Empty on Run Detail while a proposal is Pending.
+    /// </summary>
     public const string Decided = "Decided";
 
-    /// <summary>Run Detail's rejection-reason column. Empty until Story 3.1.</summary>
+    /// <summary>Run Detail's rejection-reason column. Empty unless a rejection gave a reason.</summary>
     public const string RejectionReason = "Rejection reason";
+
+    /// <summary>The Review Screen's heading, in every state it can be in (EXPERIENCE.md mockup).</summary>
+    public const string ReviewProposals = "Review proposals";
+
+    /// <summary>Run Detail's link to a Succeeded run's Review Screen (EXPERIENCE.md, Information Architecture).</summary>
+    public const string Review = "Review";
+
+    /// <summary>
+    /// Between the items of the Review Screen's meta line: Meeting, start, provider, model, Prompt
+    /// Version. U+00B7 MIDDLE DOT, as the mockup writes it.
+    /// </summary>
+    public const string MetaSeparator = " \u00B7 ";
+
+    /// <summary>DESIGN.md, Provenance chip — the AI variant's text, always exactly this.</summary>
+    public const string ProposedByAi = "Proposed by AI";
+
+    /// <summary>
+    /// DESIGN.md, Provenance chip — the human variant, completed by the decider's display name. The
+    /// timestamp sits beside the chip, never inside it.
+    /// </summary>
+    public const string DecidedByPrefix = "Decided by ";
+
+    /// <summary>A proposal card's owner label.</summary>
+    public const string Owner = "Owner";
+
+    /// <summary>A proposal card's due-date label.</summary>
+    public const string DueDate = "Due date";
+
+    /// <summary>EXPERIENCE.md, Proposal card — the owner when nobody was matched or assigned.</summary>
+    public const string Unassigned = "Unassigned";
+
+    /// <summary>
+    /// EXPERIENCE.md, Proposal card — the always-visible owner hint, completed by the suggested
+    /// owner's free text, or by <see cref="AiSuggestedNone"/> when the notes named nobody.
+    /// </summary>
+    public const string AiSuggestedPrefix = "AI suggested: ";
+
+    /// <summary>What completes <see cref="AiSuggestedPrefix"/> when the suggested owner is empty.</summary>
+    public const string AiSuggestedNone = "none";
+
+    /// <summary>EXPERIENCE.md, Proposal card — a Pending proposal with no suggested due date.</summary>
+    public const string NoDueDateProposed = "No due date proposed";
+
+    /// <summary>An approved or edited card whose Tracked Action has no due date.</summary>
+    public const string NoDueDate = "No due date";
+
+    /// <summary>EXPERIENCE.md, decided card — the heading of an Edited card's original-values column.</summary>
+    public const string Proposed = "Proposed";
+
+    /// <summary>EXPERIENCE.md, decided card — a Rejected card's reason, completed by the reason's text.</summary>
+    public const string ReasonPrefix = "Reason: ";
+
+    /// <summary>EXPERIENCE.md, decided card — a Rejected card whose rejection gave no reason.</summary>
+    public const string NoReasonGiven = "No reason given";
+
+    /// <summary>EXPERIENCE.md, decided card — the link from an Approved or Edited card to its Tracked Action.</summary>
+    public const string ViewAction = "View action";
+
+    /// <summary>EXPERIENCE.md, Pending counter — the link to the Action List filtered to this Meeting.</summary>
+    public const string ViewActions = "View actions";
+
+    /// <summary>DESIGN.md, Pending counter — "{n} proposals pending", completing the count.</summary>
+    public const string ProposalsPendingSuffix = " proposals pending";
+
+    /// <summary>The Pending counter at exactly one, where "1 proposals pending" would be wrong.</summary>
+    public const string OneProposalPending = "1 proposal pending";
+
+    /// <summary>DESIGN.md, Pending counter — the counter at zero.</summary>
+    public const string AllProposalsDecided = "All proposals decided";
+
+    /// <summary>A Pending card's filled button. EXPERIENCE.md: the verbs are exactly Approve, Edit, Reject.</summary>
+    public const string Approve = "Approve";
+
+    /// <summary>A Pending card's outlined button.</summary>
+    public const string Edit = "Edit";
+
+    /// <summary>A Pending card's text button.</summary>
+    public const string Reject = "Reject";
 }

@@ -1,6 +1,8 @@
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Review;
+using ActionLedger.Domain.Actions;
 using ActionLedger.Domain.Extraction;
+using ActionLedger.Domain.Meetings;
 using ActionLedger.Domain.Users;
 using Xunit;
 
@@ -209,6 +211,187 @@ public sealed class ProposedActionReadModelTests
     }
 
     // ---------------------------------------------------------------------------------------
+    // Story 3.4 — names, the decision copy, the Tracked Action's values, and the excerpt span
+    // ---------------------------------------------------------------------------------------
+
+    private const string Notes = "Office move.\nDana will order the scanners.\nPriya will book the range.";
+
+    [Fact]
+    public async Task A_pending_proposal_carries_its_owners_name_its_span_and_no_decision()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Order the scanners.", "dana whitfield", null, 0.9, "Dana will order the scanners."));
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [], [Dana, Priya]));
+
+        Assert.Equal("Dana Whitfield", proposal.SuggestedOwnerDisplayName);
+        Assert.Equal(13, proposal.ExcerptStart);
+        Assert.Equal("Dana will order the scanners", Notes.Substring(proposal.ExcerptStart!.Value, proposal.ExcerptLength!.Value));
+
+        Assert.Null(proposal.DecidedByUserId);
+        Assert.Null(proposal.DecidedByDisplayName);
+        Assert.Null(proposal.DecidedAt);
+        Assert.Null(proposal.RejectionReason);
+        Assert.Null(proposal.TrackedActionId);
+        Assert.Null(proposal.DecidedDescription);
+        Assert.Null(proposal.DecidedOwnerUserId);
+        Assert.Null(proposal.DecidedOwnerDisplayName);
+        Assert.Null(proposal.DecidedDueDate);
+    }
+
+    [Fact]
+    public async Task An_approved_proposal_carries_the_decision_and_the_tracked_actions_values()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Order the scanners.", "Dana Whitfield", new DateOnly(2026, 9, 25), 0.9, "Dana will order the scanners."));
+
+        ProposedAction stored = Assert.Single(run.Proposals);
+        DecisionResult result = stored.Decide(
+            DecisionKind.Approved,
+            new DecisionEdits("Order the scanners.", Dana.Id, new DateOnly(2026, 9, 25), Dana.Id, null),
+            Priya.Id,
+            Now);
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [result.TrackedAction!], [Dana, Priya]));
+
+        Assert.Equal(ReviewState.Approved, proposal.ReviewState);
+        Assert.Equal(Priya.Id, proposal.DecidedByUserId);
+        Assert.Equal("Priya Raman", proposal.DecidedByDisplayName);
+        Assert.Equal(Now, proposal.DecidedAt);
+        Assert.Null(proposal.RejectionReason);
+        Assert.Equal(result.TrackedAction!.Id, proposal.TrackedActionId);
+        Assert.Equal("Order the scanners.", proposal.DecidedDescription);
+        Assert.Equal(Dana.Id, proposal.DecidedOwnerUserId);
+        Assert.Equal("Dana Whitfield", proposal.DecidedOwnerDisplayName);
+        Assert.Equal(new DateOnly(2026, 9, 25), proposal.DecidedDueDate);
+        Assert.NotNull(proposal.ExcerptStart);
+    }
+
+    [Fact]
+    public async Task An_edited_proposal_carries_the_edited_values_and_keeps_the_proposed_ones()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Book the range.", "Facilities", new DateOnly(2026, 10, 10), 0.55, "Priya will book the range."));
+
+        DecisionResult result = Assert.Single(run.Proposals).Decide(
+            DecisionKind.Edited,
+            new DecisionEdits("Book the range for Friday.", Priya.Id, new DateOnly(2026, 10, 3), null, null),
+            Dana.Id,
+            Now);
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [result.TrackedAction!], [Dana, Priya]));
+
+        Assert.Equal(ReviewState.Edited, proposal.ReviewState);
+        Assert.Equal("Book the range.", proposal.Description);
+        Assert.Equal("Facilities", proposal.SuggestedOwner);
+        Assert.Null(proposal.SuggestedOwnerDisplayName);
+        Assert.Equal(new DateOnly(2026, 10, 10), proposal.SuggestedDueDate);
+
+        Assert.Equal("Dana Whitfield", proposal.DecidedByDisplayName);
+        Assert.Equal("Book the range for Friday.", proposal.DecidedDescription);
+        Assert.Equal(Priya.Id, proposal.DecidedOwnerUserId);
+        Assert.Equal("Priya Raman", proposal.DecidedOwnerDisplayName);
+        Assert.Equal(new DateOnly(2026, 10, 3), proposal.DecidedDueDate);
+        Assert.Equal("Priya will book the range", Notes.Substring(proposal.ExcerptStart!.Value, proposal.ExcerptLength!.Value));
+    }
+
+    [Fact]
+    public async Task A_rejected_proposal_carries_the_decision_and_reason_and_no_tracked_values()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Book the range.", string.Empty, null, 0.9, "Priya will book the range."));
+
+        Assert.Single(run.Proposals).Decide(
+            DecisionKind.Rejected,
+            new DecisionEdits(null, null, null, null, "  discussion item, not an action "),
+            Dana.Id,
+            Now);
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [], [Dana, Priya]));
+
+        Assert.Equal(ReviewState.Rejected, proposal.ReviewState);
+        Assert.Equal(Dana.Id, proposal.DecidedByUserId);
+        Assert.Equal("Dana Whitfield", proposal.DecidedByDisplayName);
+        Assert.Equal(Now, proposal.DecidedAt);
+        Assert.Equal("discussion item, not an action", proposal.RejectionReason);
+        Assert.Null(proposal.TrackedActionId);
+        Assert.Null(proposal.DecidedDescription);
+        Assert.Null(proposal.DecidedOwnerUserId);
+        Assert.Null(proposal.DecidedOwnerDisplayName);
+        Assert.Null(proposal.DecidedDueDate);
+    }
+
+    [Fact]
+    public async Task An_approval_to_unassigned_has_a_null_owner_and_no_owner_name()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Book the range.", "Facilities", null, 0.9, "Priya will book the range."));
+
+        DecisionResult result = Assert.Single(run.Proposals).Decide(
+            DecisionKind.Approved,
+            new DecisionEdits("Book the range.", null, null, null, null),
+            Dana.Id,
+            Now);
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [result.TrackedAction!], [Dana, Priya]));
+
+        Assert.Equal(result.TrackedAction!.Id, proposal.TrackedActionId);
+        Assert.Null(proposal.DecidedOwnerUserId);
+        Assert.Null(proposal.DecidedOwnerDisplayName);
+        Assert.Null(proposal.DecidedDueDate);
+    }
+
+    [Fact]
+    public async Task A_system_user_decider_is_still_named()
+    {
+        User seed = User.RegisterSystem("seed", "Seed", new string('h', 60), Now);
+
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Book the range.", string.Empty, null, 0.9, "Priya will book the range."));
+
+        Assert.Single(run.Proposals).Decide(
+            DecisionKind.Rejected,
+            new DecisionEdits(null, null, null, null, null),
+            seed.Id,
+            Now);
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [], [Dana, seed]));
+
+        // The roster excludes system users for pre-selection; attribution does not.
+        Assert.Equal("Seed", proposal.DecidedByDisplayName);
+    }
+
+    [Fact]
+    public async Task An_excerpt_not_in_the_notes_has_no_span()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Resurface the lot.", string.Empty, null, 0.9, "Marcus will resurface the lot."));
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(run, meeting, [], [Dana]));
+
+        Assert.Null(proposal.ExcerptStart);
+        Assert.Null(proposal.ExcerptLength);
+    }
+
+    [Fact]
+    public async Task Another_meetings_notes_are_not_searched()
+    {
+        (Meeting meeting, ExtractionRun run) = NotedRun(
+            new ProposedActionDraft("Order the scanners.", string.Empty, null, 0.9, "Dana will order the scanners."));
+
+        // The run's notes id points at nothing on file; a meeting whose notes do contain the
+        // sentence must not be used in their place.
+        ExtractionRun orphan = ExtractionRun.Start(
+            meeting.Id, Guid.CreateVersion7(), NotesSha256, Guid.CreateVersion7(), Metrics,
+            ExtractionOutcome.Succeeded, failureReason: null, warnings: null);
+        orphan.AddProposals([new ProposedActionDraft("Order the scanners.", string.Empty, null, 0.9, "Dana will order the scanners.")], Now);
+
+        ProposedActionDto proposal = Assert.Single(await ReadAllAsync(orphan, meeting, [], [Dana], [run]));
+
+        Assert.Null(proposal.ExcerptStart);
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Fakes
     // ---------------------------------------------------------------------------------------
 
@@ -231,6 +414,43 @@ public sealed class ProposedActionReadModelTests
 
         return run;
     }
+
+    private static (Meeting Meeting, ExtractionRun Run) NotedRun(params ProposedActionDraft[] drafts)
+    {
+        Meeting meeting = Meeting.Create("Office move", new DateOnly(2026, 9, 22), null, Guid.CreateVersion7(), Now);
+        MeetingNotes notes = meeting.AttachNotes(Notes, Now);
+
+        ExtractionRun run = ExtractionRun.Start(
+            meeting.Id,
+            notes.Id,
+            notes.Sha256,
+            Guid.CreateVersion7(),
+            Metrics,
+            ExtractionOutcome.Succeeded,
+            failureReason: null,
+            warnings: null);
+
+        run.AddProposals(drafts, Now);
+
+        return (meeting, run);
+    }
+
+    private static Task<IReadOnlyList<ProposedActionDto>> ReadAllAsync(
+        ExtractionRun run,
+        Meeting meeting,
+        IReadOnlyList<TrackedAction> tracked,
+        IReadOnlyList<User> users,
+        IReadOnlyList<ExtractionRun>? otherRuns = null) =>
+        new ProposedActionReadModel(
+            new FakeReadDb([
+                .. run.Proposals,
+                run,
+                .. otherRuns ?? [],
+                meeting,
+                .. tracked,
+                .. users]),
+            new FakeExtractionSettings(0.70))
+            .ForRunAsync(run.Id, TestContext.Current.CancellationToken);
 
     private static Task<IReadOnlyList<ProposedActionDto>> ReadAsync(
         ExtractionRun run,
