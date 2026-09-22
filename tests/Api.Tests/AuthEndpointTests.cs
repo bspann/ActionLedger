@@ -8,6 +8,7 @@ using ActionLedger.Api.Auth;
 using ActionLedger.Api.Configuration;
 using ActionLedger.Api.Controllers;
 using ActionLedger.Api.Errors;
+using ActionLedger.Application;
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Auth;
 using ActionLedger.Application.Users;
@@ -377,6 +378,9 @@ public sealed class SeededApi : IAsyncLifetime
 
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
         services.AddActionLedgerPersistence(_ => connectionString);
+
+        // AppDbContext takes the outbox's payload builder, which the Application ring registers.
+        services.AddActionLedgerApplication();
 
         _migrator = services.BuildServiceProvider();
 
