@@ -1,0 +1,21 @@
+{
+  "version": "1",
+  "type": "object",
+  "required": ["actions"],
+  "properties": {
+    "actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["description", "suggestedOwner", "suggestedDueDate", "confidence", "sourceExcerpt"],
+        "properties": {
+          "description": { "type": "string", "minLength": 1, "maxLength": 500 },
+          "suggestedOwner": { "type": "string", "maxLength": 100 },
+          "suggestedDueDate": { "type": ["string", "null"], "format": "date" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+          "sourceExcerpt": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        }
+      }
+    }
+  }
+}
