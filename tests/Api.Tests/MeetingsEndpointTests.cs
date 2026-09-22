@@ -32,7 +32,7 @@ public sealed class MeetingsEndpointTests
     private static HttpClient SignedIn(TestApi api) => api.CreateClientAs(nameof(Role.ActionOfficer));
 
     [Fact]
-    public async Task The_four_meeting_routes_are_mapped_under_the_version_prefix()
+    public async Task The_meeting_routes_are_mapped_under_the_version_prefix()
     {
         await using TestApi api = new();
         using HttpClient _ = api.CreateClient();
@@ -53,6 +53,9 @@ public sealed class MeetingsEndpointTests
                 $"/{ApiRoutes.Prefix}/meetings",
                 $"/{ApiRoutes.Prefix}/meetings/{{id}}",
                 $"/{ApiRoutes.Prefix}/meetings/{{id}}/notes",
+                // AD-13 — a run is created against a Meeting and read at runs/{id}, so only the
+                // create half appears under this prefix.
+                $"/{ApiRoutes.Prefix}/meetings/{{id}}/runs",
             ],
             routes);
     }

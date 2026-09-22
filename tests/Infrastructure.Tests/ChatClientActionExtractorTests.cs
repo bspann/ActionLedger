@@ -148,6 +148,27 @@ public sealed class ChatClientActionExtractorTests
         Assert.Contains("actions[0].confidence", result.FailureReason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A blank description or excerpt passes the schema's <c>minLength</c> but must fail at the
+    /// seam: the aggregate refuses blank text, and a refusal there is a 409 with no run row where
+    /// AD-11 promises a persisted Failed run.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"actions":[{"description":"   ","suggestedOwner":"Dana","suggestedDueDate":null,"confidence":0.5,"sourceExcerpt":"x"}]}""", "description")]
+    [InlineData("""{"actions":[{"description":"d","suggestedOwner":"Dana","suggestedDueDate":null,"confidence":0.5,"sourceExcerpt":"  "}]}""", "sourceExcerpt")]
+    public async Task Two_blank_text_responses_fail_the_run_rather_than_succeeding(string blank, string member)
+    {
+        ScriptedChatClient provider = new(blank, blank);
+
+        ExtractionResult result = await Extractor(provider).ExtractAsync(Request(), TestContext.Current.CancellationToken);
+
+        Assert.False(result.IsSucceeded);
+        Assert.Equal(2, provider.Calls);
+        Assert.Empty(result.Kept);
+        Assert.NotNull(result.FailureReason);
+        Assert.Contains($"actions[0].{member}", result.FailureReason, StringComparison.Ordinal);
+    }
+
     /// <summary>One retry, not two. A third call would break NFR-1's 180-second ceiling.</summary>
     [Fact]
     public async Task The_extractor_calls_at_most_twice()
@@ -362,7 +383,7 @@ public sealed class ChatClientActionExtractorTests
         int callTimeoutSeconds = 90,
         TimeProvider? time = null)
     {
-        AiSettings settings = new(FakeChatClientFactory.ProviderName, "v1", callTimeoutSeconds);
+        AiSettings settings = new(FakeChatClientFactory.ProviderName, "v1", callTimeoutSeconds, 0.70);
 
         return new ChatClientActionExtractor(
             provider,

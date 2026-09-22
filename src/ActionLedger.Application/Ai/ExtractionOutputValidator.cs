@@ -3,7 +3,8 @@ using System.Globalization;
 namespace ActionLedger.Application.Ai;
 
 /// <summary>
-/// AD-11, FR-5 — layer two of validation: lengths, ranges and date format, checked by hand.
+/// AD-11, FR-5 — layer two of validation: lengths, ranges, blankness and date format, checked by
+/// hand.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -91,6 +92,17 @@ public static class ExtractionOutputValidator
                 $"must be {DescriptionMinLength} to {DescriptionMaxLength} characters, was {action.Description.Length}");
         }
 
+        // Blank-after-trim is a validation failure, not a row. `minLength: 1` counts characters, so
+        // "   " satisfies the bound above — and `ProposedAction` refuses it, which would throw a
+        // DomainRuleException out of `ExtractionRun.AddProposals` and answer the POST with a 409
+        // and *no* run row: exactly the outcome AD-11 exists to prevent. Refusing it here sends it
+        // down the ordinary failure path instead, so the run persists as Failed and the caller
+        // still gets its 201.
+        if (string.IsNullOrWhiteSpace(action.Description))
+        {
+            return Reason(index, "description", "must not be blank");
+        }
+
         if (action.SuggestedOwner.Length > SuggestedOwnerMaxLength)
         {
             return Reason(
@@ -121,6 +133,13 @@ public static class ExtractionOutputValidator
                 index,
                 "sourceExcerpt",
                 $"must be {SourceExcerptMinLength} to {SourceExcerptMaxLength} characters, was {action.SourceExcerpt.Length}");
+        }
+
+        // Same reason as the description: `ProposedAction` refuses a blank excerpt, and a refusal
+        // reaching the aggregate is a 409 with nothing persisted.
+        if (string.IsNullOrWhiteSpace(action.SourceExcerpt))
+        {
+            return Reason(index, "sourceExcerpt", "must not be blank");
         }
 
         return null;
