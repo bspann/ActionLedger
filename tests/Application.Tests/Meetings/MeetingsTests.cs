@@ -1,5 +1,6 @@
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Meetings;
+using ActionLedger.Domain.Actions;
 using ActionLedger.Domain.Common;
 using ActionLedger.Domain.Extraction;
 using ActionLedger.Domain.Meetings;
@@ -211,19 +212,37 @@ public sealed class MeetingsTests
     }
 
     [Fact]
-    public async Task The_run_count_is_this_meetings_real_number_while_tracked_actions_stay_zero()
+    public async Task Both_counts_are_this_meetings_real_numbers()
     {
         Meeting busy = NewMeeting("Weekly sync");
         Meeting quiet = NewMeeting("Solo review", new DateOnly(2026, 9, 17), Now);
 
+        ExtractionRun decided = RunFor(busy, ExtractionOutcome.Succeeded);
+        ExtractionRun undecided = RunFor(quiet, ExtractionOutcome.Succeeded);
+
+        decided.AddProposals([Draft("Order the scanners."), Draft("Book the range."), Draft("Brief the team.")], Now);
+        undecided.AddProposals([Draft("Review the budget.")], Now);
+
+        // Two approvals and a rejection on one Meeting: only the approvals are Tracked Actions.
+        TrackedAction first = Approve(decided.Proposals[0]);
+        TrackedAction second = Approve(decided.Proposals[1]);
+        decided.Proposals[2].Decide(DecisionKind.Rejected, new DecisionEdits(null, null, null, null, null), Actor, Now);
+
         // Two runs on one Meeting and one on another, so a count that ignored the correlation —
-        // or counted every run in the table — would answer 3 for both rows.
+        // or counted every run in the table — would answer 3 for both rows. The Tracked Actions
+        // reach a Meeting only through proposal and run, so the proposals are rows too.
         MeetingsQueries queries = new(new FakeReadDb(
-            busy,
-            quiet,
-            RunFor(busy, ExtractionOutcome.Succeeded),
-            RunFor(busy, ExtractionOutcome.Failed),
-            RunFor(quiet, ExtractionOutcome.Succeeded)));
+            [
+                busy,
+                quiet,
+                decided,
+                RunFor(busy, ExtractionOutcome.Failed),
+                undecided,
+                .. decided.Proposals,
+                .. undecided.Proposals,
+                first,
+                second,
+            ]));
 
         IReadOnlyList<MeetingSummaryDto> items =
             (await queries.ListAsync(null, null, TestContext.Current.CancellationToken)).Items;
@@ -235,8 +254,9 @@ public sealed class MeetingsTests
         Assert.Equal(2, busySummary.RunCount);
         Assert.Equal(1, quietSummary.RunCount);
 
-        // Story 3.1 replaces the last literal. Until then it stays 0 whatever the runs did.
-        Assert.Equal(0, busySummary.TrackedActionCount);
+        // A correlated count through proposal and run: a count of every row in the table would
+        // answer 2 for both, and the undecided proposal on the quiet Meeting is not an action.
+        Assert.Equal(2, busySummary.TrackedActionCount);
         Assert.Equal(0, quietSummary.TrackedActionCount);
     }
 
@@ -349,6 +369,17 @@ public sealed class MeetingsTests
             outcome,
             outcome == ExtractionOutcome.Failed ? "Both attempts failed validation." : null,
             warnings: null);
+
+    private static ProposedActionDraft Draft(string description) =>
+        new(description, "Dana Whitfield", null, 0.9, description);
+
+    /// <summary>Approves a proposal exactly as it stands, which is the only way to mint a Tracked Action.</summary>
+    private static TrackedAction Approve(ProposedAction proposal) =>
+        proposal.Decide(
+            DecisionKind.Approved,
+            new DecisionEdits(proposal.Description, null, proposal.SuggestedDueDate, null, null),
+            Actor,
+            Now).TrackedAction!;
 
     /// <summary>The write seam over a list. It adds and loads; it never saves (AD-10).</summary>
     private sealed class FakeMeetingRepository(params Meeting[] existing) : IMeetingRepository

@@ -4,18 +4,17 @@ namespace ActionLedger.Application.Meetings;
 /// AD-13 — a Meeting as the Meeting List renders it.
 /// </summary>
 /// <remarks>
-/// <see cref="RunCount"/> is a correlated count of this Meeting's extraction runs as of Story 2.5.
-/// <see cref="TrackedActionCount"/> is still projected as <c>0</c>, because the table behind it
-/// does not exist yet: tracked actions arrive with Story 3.1. The envelope was fixed before either
-/// had a source — the web client is generated from the committed contract, so publishing both
-/// fields up front meant each story changes one <c>Select</c> rather than reshaping the generated
-/// client twice.
+/// <see cref="RunCount"/> is a correlated count of this Meeting's extraction runs, and
+/// <see cref="TrackedActionCount"/> a correlated count of the Tracked Actions decided from those
+/// runs' proposals. The envelope was fixed before either had a source — the web client is
+/// generated from the committed contract, so publishing both fields up front meant each story
+/// changed one <c>Select</c> rather than reshaping the generated client twice.
 /// </remarks>
 /// <param name="Id">The Meeting's id.</param>
 /// <param name="Title">The meeting's title.</param>
 /// <param name="MeetingDate">The calendar day the meeting happened.</param>
 /// <param name="RunCount">How many extraction runs this Meeting has, Succeeded and Failed alike.</param>
-/// <param name="TrackedActionCount">How many tracked actions came out of it. Always <c>0</c> until Story 3.1.</param>
+/// <param name="TrackedActionCount">How many Tracked Actions were approved, as proposed or edited, from its runs' proposals.</param>
 public sealed record MeetingSummaryDto(
     Guid Id,
     string Title,

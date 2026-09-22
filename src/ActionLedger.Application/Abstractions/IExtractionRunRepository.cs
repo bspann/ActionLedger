@@ -17,4 +17,12 @@ public interface IExtractionRunRepository
     /// an aggregate whose list is empty because nobody asked for it.
     /// </summary>
     Task<ExtractionRun?> FindByIdAsync(Guid id, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Loads the run that owns a proposal, or <c>null</c> when no run does. The run's proposals
+    /// come with it, in AI order, exactly as <see cref="FindByIdAsync"/> loads them — so the
+    /// proposal is tracked and its <c>xmin</c> token is checked when a decision on it commits
+    /// (AD-20).
+    /// </summary>
+    Task<ExtractionRun?> FindByProposedActionIdAsync(Guid proposedActionId, CancellationToken cancellationToken = default);
 }

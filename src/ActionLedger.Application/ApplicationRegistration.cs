@@ -35,6 +35,9 @@ public static class ApplicationRegistration
         services.AddScoped<RunsQueries>();
         services.AddScoped<ProposedActionReadModel>();
 
+        // Story 3.2 — the decision use case. The only write that creates a Tracked Action.
+        services.AddScoped<DecideProposalHandler>();
+
         return services;
     }
 }

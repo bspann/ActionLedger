@@ -1,7 +1,6 @@
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Application.Users;
 using ActionLedger.Domain.Extraction;
-using ActionLedger.Domain.Users;
 
 namespace ActionLedger.Application.Review;
 
@@ -57,7 +56,8 @@ public sealed class ProposedActionReadModel(IReadDb readDb, IExtractionSettings 
             return [];
         }
 
-        IReadOnlyList<UserSummaryDto> roster = await RosterAsync(cancellationToken);
+        // Non-system users only, read the way the decision handler reads them (AD-9).
+        IReadOnlyList<UserSummaryDto> roster = await OwnerRoster.ReadAsync(readDb, cancellationToken);
 
         double threshold = settings.LowConfidenceThreshold;
 
@@ -72,20 +72,4 @@ public sealed class ProposedActionReadModel(IReadDb readDb, IExtractionSettings 
             }),
         ];
     }
-
-    /// <summary>
-    /// The roster the match is made against, read once for the whole page.
-    /// </summary>
-    /// <remarks>
-    /// System users are excluded, exactly as <c>UsersQueries.ListAsync</c> excludes them. A
-    /// pre-selection the owner picker cannot show is worse than no pre-selection: the picker is
-    /// built from that same roster, so matching the Seed identity would hand the web app an id it
-    /// has no row for.
-    /// </remarks>
-    private Task<IReadOnlyList<UserSummaryDto>> RosterAsync(CancellationToken cancellationToken) =>
-        readDb.ToListAsync(
-            readDb.Query<User>()
-                .Where(user => !user.IsSystem)
-                .Select(user => new UserSummaryDto(user.Id, user.DisplayName, user.Role)),
-            cancellationToken);
 }
