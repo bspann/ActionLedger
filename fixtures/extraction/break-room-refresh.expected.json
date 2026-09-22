@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Count the chair inventory and write it up",
+      "suggestedOwner": "",
+      "suggestedDueDate": "2026-05-22",
+      "confidence": 0.78,
+      "sourceExcerpt": "The chair inventory needs to be counted and written up by 2026-05-22."
+    },
+    {
+      "description": "Purchase a replacement kettle",
+      "suggestedOwner": "",
+      "suggestedDueDate": "2026-05-18",
+      "confidence": 0.80,
+      "sourceExcerpt": "A replacement kettle should be purchased by 2026-05-18."
+    }
+  ]
+}

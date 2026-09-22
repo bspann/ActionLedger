@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Collect the vendor's insurance certificate",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": "2026-07-17",
+      "confidence": 0.92,
+      "sourceExcerpt": "Dana Whitfield will collect the vendor's insurance certificate by 2026-07-17."
+    },
+    {
+      "description": "File the vendor contact in the facilities directory",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": "2026-07-21",
+      "confidence": 0.90,
+      "sourceExcerpt": "Priya Ramaswamy will file the vendor contact in the facilities directory by 2026-07-21."
+    }
+  ]
+}
