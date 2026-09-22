@@ -147,3 +147,18 @@ source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.m
 severity: low
 reason: Only `prompts/extract-actions.v1.md` is embedded, so `Versions` is a one-element list and `Current == Versions[^1]` holds trivially. `PromptCatalog` reads this assembly's own manifest resources through the static `EmbeddedContent`, so closing this needs either a seam for the resource source or a second embedded prompt file. What would settle it: add the assertion when a second prompt revision exists, which is Story 7.1's territory.
 status: open
+
+### DW-20: `ExtractionResult.Failed` does not refuse a blank reason, and Story 2.5 is the first code to turn one into a 409 on the path AD-11 requires to answer 201.
+origin: spec-deferred e91bd47ec986
+location: src/ActionLedger.Application/Ai/ExtractionResult.cs:130
+source_spec: `spec-2-5-extraction-run-and-proposals-persisted-with-ai-proposal-revi.md`
+reason: `src/ActionLedger.Application/Ai/ExtractionResult.cs:130` builds `Failed(reason, metrics)` with no guard on `reason`. `ExtractionRun.Start` refuses a Failed run whose reason is blank (`src/ActionLedger.Domain/Extraction/ExtractionRun.cs`, `RequireReasonMatchesOutcome`), so a blank reason becomes a `DomainRuleException` and the controller answers 409 instead of the 201-with-Outcome-Failed that AD-11 fixes. Unreachable today: every reason `ChatClientActionExtractor` builds is a non-empty interpolation, and the Fake is the only registered provider. `ExtractionResult` is Story 2.4's file, so the missing guard predates this story; 2.5 is only the first consumer. What would settle it: when Story 2.7 wires a provider whose exception message can be empty, decide whether `Failed` rejects a blank reason or the aggregate substitutes a placeholder rather than throwing.
+status: open
+
+### DW-21: `AiOptions`' two provider model names carry no length bound mirroring `ExtractionRunMetadata.ModelMaxLength`, so an over-long operator-supplied model turns every run into a 409 with no row.
+origin: spec-deferred 4c0253d549b8
+location: src/ActionLedger.Api/Configuration/AiOptions.cs
+source_spec: `spec-2-5-extraction-run-and-proposals-persisted-with-ai-proposal-revi.md`
+severity: medium
+reason: `AiOptions.LocalOpenAI.Model` and `AiOptions.AzureOpenAI.Model` are free strings with no `[StringLength]`, while `ExtractionRunMetadata.Validated()` throws `DomainRuleException` for a blank or over-200-character model — and `ApiExceptionHandler` maps that to 409, after the provider call, with no `ExtractionRun` persisted. That is the outcome AD-11 exists to prevent, and it would fail on every run rather than once. Unreachable today: the Fake is the only registered provider and supplies `fixture-catalog`, its own constant, so nothing operator-supplied reaches the guard. `AiOptions` is Story 2.4's file, so the missing bound predates this story; 2.5 is only the first code that turns it into a status code. What would settle it: when Story 2.7 wires LM Studio, Ollama and Azure OpenAI, decide whether the options bind with `[StringLength]` tied to the Domain constants and fail at startup (with the constant-agreement test `ProposedActionShapeTests` already models for the validator bounds), or
+status: open

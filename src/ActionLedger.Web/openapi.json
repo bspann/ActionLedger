@@ -388,6 +388,84 @@
         ]
       }
     },
+    "/api/v1/meetings/{id}/runs": {
+      "post": {
+        "tags": [
+          "Meetings"
+        ],
+        "summary": "Starts an extraction run against this meeting's notes.",
+        "description": "The run is synchronous and takes no body; the actor comes from the sub claim. A failed extraction is still 201 with outcome Failed and a reason, because a model that returned nonsense is not an HTTP error. A meeting may have any number of runs.",
+        "operationId": "StartExtractionRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [ ]
+          }
+        ]
+      }
+    },
     "/api/v1/meetings/{id}": {
       "get": {
         "tags": [
@@ -424,6 +502,84 @@
               "text/json": {
                 "schema": {
                   "$ref": "#/components/schemas/MeetingDetailDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": [ ]
+          }
+        ]
+      }
+    },
+    "/api/v1/runs/{id}": {
+      "get": {
+        "tags": [
+          "Runs"
+        ],
+        "summary": "Reads one extraction run, with its metadata and proposals.",
+        "description": "Carries provider, model, prompt version, schema version, start time, duration, both token counts, outcome, failure reason and warnings. Proposals come back in AI order with isLowConfidence and suggestedOwnerUserId already computed server-side.",
+        "operationId": "GetExtractionRun",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailDto"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailDto"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunDetailDto"
                 }
               }
             }
@@ -559,6 +715,13 @@
             }
           }
         }
+      },
+      "ExtractionOutcome": {
+        "enum": [
+          "Succeeded",
+          "Failed"
+        ],
+        "type": "string"
       },
       "HealthStatus": {
         "required": [
@@ -858,12 +1021,207 @@
           }
         }
       },
+      "ProposedActionDto": {
+        "required": [
+          "id",
+          "ordinal",
+          "description",
+          "suggestedOwner",
+          "suggestedDueDate",
+          "confidence",
+          "sourceExcerpt",
+          "isLowConfidence",
+          "suggestedOwnerUserId",
+          "reviewState"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "ordinal": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "description": {
+            "type": "string"
+          },
+          "suggestedOwner": {
+            "type": "string"
+          },
+          "suggestedDueDate": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "confidence": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "sourceExcerpt": {
+            "type": "string"
+          },
+          "isLowConfidence": {
+            "type": "boolean"
+          },
+          "suggestedOwnerUserId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "reviewState": {
+            "$ref": "#/components/schemas/ReviewState"
+          }
+        }
+      },
+      "ReviewState": {
+        "enum": [
+          "Pending",
+          "Approved",
+          "Edited",
+          "Rejected"
+        ],
+        "type": "string"
+      },
       "Role": {
         "enum": [
           "ActionOfficer",
           "Lead"
         ],
         "type": "string"
+      },
+      "RunDetailDto": {
+        "required": [
+          "id",
+          "meetingId",
+          "meetingNotesId",
+          "notesSha256",
+          "startedByUserId",
+          "provider",
+          "model",
+          "promptVersion",
+          "schemaVersion",
+          "startedAt",
+          "durationMs",
+          "inputTokens",
+          "outputTokens",
+          "outcome",
+          "failureReason",
+          "warnings",
+          "proposals"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "meetingId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "meetingNotesId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "notesSha256": {
+            "type": "string"
+          },
+          "startedByUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "promptVersion": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "durationMs": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "inputTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "outputTokens": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ExtractionOutcome"
+          },
+          "failureReason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProposedActionDto"
+            }
+          }
+        }
+      },
+      "RunDto": {
+        "required": [
+          "id",
+          "outcome"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ExtractionOutcome"
+          }
+        }
       },
       "SaveMeetingNotesCommand": {
         "required": [
@@ -1028,6 +1386,9 @@
     },
     {
       "name": "Meetings"
+    },
+    {
+      "name": "Runs"
     },
     {
       "name": "Users"

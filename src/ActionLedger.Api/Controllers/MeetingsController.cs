@@ -1,4 +1,5 @@
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Application.Extraction;
 using ActionLedger.Application.Meetings;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -6,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace ActionLedger.Api.Controllers;
 
 /// <summary>
-/// AD-13 — the four Meeting operations. The route carries no <c>api/v1</c>:
+/// AD-13 — the five Meeting operations. The route carries no <c>api/v1</c>:
 /// <c>ApiRoutePrefixConvention</c> prepends it, so a controller cannot forget the prefix. AD-2 —
 /// each action validates the HTTP shape and calls exactly one handler or query.
 /// </summary>
@@ -29,8 +30,17 @@ namespace ActionLedger.Api.Controllers;
 public sealed class MeetingsController(
     CreateMeetingHandler createMeeting,
     SaveMeetingNotesHandler saveNotes,
+    RunExtractionHandler runExtraction,
     MeetingsQueries meetings) : ControllerBase
 {
+    /// <summary>
+    /// The controller name <c>CreatedAtAction</c> wants for the run's <c>Location</c>: MVC's token
+    /// is the type name without its <c>Controller</c> suffix, and deriving it here keeps the
+    /// literal out of the call.
+    /// </summary>
+    private static readonly string RunsControllerName =
+        nameof(RunsController)[..^"Controller".Length];
+
     /// <summary>Creates a Meeting.</summary>
     /// <remarks>
     /// The Meeting is attributed to the token's <c>sub</c> claim. There is nowhere in the body to
@@ -91,6 +101,60 @@ public sealed class MeetingsController(
         [FromBody] SaveMeetingNotesCommand command,
         CancellationToken cancellationToken) =>
         Ok(await saveNotes.HandleAsync(id, command, cancellationToken));
+
+    /// <summary>Starts an extraction run against this meeting's notes.</summary>
+    /// <remarks>
+    /// <para>
+    /// The run happens inside this request (FR-4): there is no queue, no polling, and no
+    /// client-side timeout on this route. nginx allows 200 seconds on <c>/api</c> and a run makes
+    /// at most two provider calls inside the 180-second ceiling.
+    /// </para>
+    /// <para>
+    /// <strong>A failed extraction is a 201, not an error.</strong> A provider that returned
+    /// nonsense produces a persisted run with <c>outcome: "Failed"</c> and the extractor's own
+    /// reason, trimmed and clipped to 2,000 characters (AD-11). The only failures here are a
+    /// meeting with no notes, no token, and no such meeting.
+    /// </para>
+    /// <para>
+    /// There is no request body. The run is attributed to the token's <c>sub</c> claim, and the
+    /// provider, model, and prompt version come from configuration, never from the caller.
+    /// </para>
+    /// </remarks>
+    /// <param name="id">The Meeting's id.</param>
+    /// <param name="cancellationToken">The request's cancellation token.</param>
+    /// <response code="201">The new run's id and outcome, for Succeeded and Failed alike.</response>
+    /// <response code="400">The meeting has no notes to extract from, or the id is malformed.</response>
+    /// <response code="401">No token, or a token this Api did not issue.</response>
+    /// <response code="404">No Meeting has that id.</response>
+    [HttpPost("{id}/runs")]
+    [EndpointName("StartExtractionRun")]
+    [EndpointSummary("Starts an extraction run against this meeting's notes.")]
+    [EndpointDescription(
+        "The run is synchronous and takes no body; the actor comes from the sub claim. A failed "
+        + "extraction is still 201 with outcome Failed and a reason, because a model that "
+        + "returned nonsense is not an HTTP error. A meeting may have any number of runs.")]
+    [ProducesResponseType<RunDto>(StatusCodes.Status201Created)]
+    // ValidationProblemDetails, as every other action here declares: a malformed {id} is answered
+    // by model binding with an `errors` map, and publishing the bare shape would generate a client
+    // that cannot read the one 400 a caller is most likely to hit.
+    [ProducesResponseType<ValidationProblemDetails>(StatusCodes.Status400BadRequest, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized, "application/problem+json")]
+    [ProducesResponseType<ProblemDetails>(StatusCodes.Status404NotFound, "application/problem+json")]
+    public async Task<ActionResult<RunDto>> StartRun(
+        [FromRoute] Guid id,
+        CancellationToken cancellationToken)
+    {
+        RunDto run = await runExtraction.HandleAsync(id, cancellationToken);
+
+        // The run is its own resource under `runs/{id}` (AD-13), so the Location points at
+        // RunsController.Get rather than at anything under this controller. CreatedAtAction takes
+        // the action and controller as strings and resolves them at request time, so a rename would
+        // compile and turn this 201 into a 500 — which is why both halves are nameof-derived rather
+        // than literals. What nameof cannot follow: a changed route template on RunsController, or
+        // a second action named Get added beside it. The Location is asserted end-to-end by
+        // RunsEndpointTests.
+        return CreatedAtAction(nameof(RunsController.Get), RunsControllerName, new { id = run.Id }, run);
+    }
 
     /// <summary>Lists meetings, newest first.</summary>
     /// <remarks>

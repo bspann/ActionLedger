@@ -1,3 +1,5 @@
+using ActionLedger.Domain.Actions;
+using ActionLedger.Domain.Extraction;
 using ActionLedger.Domain.Meetings;
 using ActionLedger.Domain.Users;
 using Microsoft.EntityFrameworkCore;
@@ -29,6 +31,19 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     /// </summary>
     public DbSet<Meeting> Meetings => Set<Meeting>();
 
+    /// <summary>
+    /// Every attempt to turn a Meeting's notes into proposals, Succeeded and Failed alike (AD-6,
+    /// AD-11). Each owns its <c>ProposedAction</c> list, which has no <c>DbSet</c> of its own
+    /// because it has no lifetime of its own.
+    /// </summary>
+    public DbSet<ExtractionRun> ExtractionRuns => Set<ExtractionRun>();
+
+    /// <summary>
+    /// The append-only audit rows (AD-7, ADR-004). Its own root with no navigation from any
+    /// aggregate, so it needs a <c>DbSet</c> even though only aggregates ever create one.
+    /// </summary>
+    public DbSet<ActionRevision> ActionRevisions => Set<ActionRevision>();
+
     /// <inheritdoc />
     /// <remarks>
     /// Translation lives here rather than in <c>UnitOfWork</c> so every save path is covered —
@@ -56,9 +71,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         // AD-20 puts a `xmin` concurrency token on ProposedAction, TrackedAction, Meeting, and
         // OutboxMessage — the four roots with a state machine. `User` is not one of them and does
-        // not get one. `Meeting` now has its own, set by MeetingConfiguration; ProposedAction,
-        // TrackedAction, and OutboxMessage arrive with their epics and set theirs the same way, in
-        // their own configuration:
+        // not get one, and neither does `ExtractionRun`: it is inserted once and never updated.
+        // `Meeting` and `ProposedAction` now have theirs, set by their own configurations;
+        // TrackedAction and OutboxMessage arrive with their epics and set theirs the same way:
         //
         //     builder.Property<uint>("xmin").IsRowVersion();
         //

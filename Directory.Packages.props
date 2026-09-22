@@ -89,6 +89,15 @@
     <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
   </ItemGroup>
 
+  <!--
+    NFR-4 — the Application ring writes the ExtractionRunCompleted event through ILogger<T>. On
+    AD-1's three-package allowlist from the first commit; Story 2.5 is the first use. MIT, so NFR9
+    holds. Abstractions only: the logging implementation stays in the host.
+  -->
+  <ItemGroup Label="Application logging (Story 2.5)">
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+  </ItemGroup>
+
   <ItemGroup Label="Architecture rules">
     <PackageVersion Include="NetArchTest.eNhancedEdition" Version="1.4.5" />
   </ItemGroup>
