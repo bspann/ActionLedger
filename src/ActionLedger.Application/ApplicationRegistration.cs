@@ -1,4 +1,5 @@
 using ActionLedger.Application.Auth;
+using ActionLedger.Application.Meetings;
 using ActionLedger.Application.Users;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,6 +21,10 @@ public static class ApplicationRegistration
     {
         services.AddScoped<SignInHandler>();
         services.AddScoped<UsersQueries>();
+
+        services.AddScoped<CreateMeetingHandler>();
+        services.AddScoped<SaveMeetingNotesHandler>();
+        services.AddScoped<MeetingsQueries>();
 
         return services;
     }
