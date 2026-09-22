@@ -70,4 +70,102 @@ public static class Voice
 
     /// <summary>UX-DR19 — the snackbar raised on 409. No Retry is offered with it.</summary>
     public const string AlreadyChanged = "Already changed. Reloading.";
+
+    /// <summary>
+    /// EXPERIENCE.md, Meeting List — the button that opens the New meeting dialog. It appears in
+    /// the list header and again in the empty state, where it is the primary action.
+    /// </summary>
+    public const string NewMeeting = "New meeting";
+
+    /// <summary>EXPERIENCE.md, State Patterns, "No Meetings" — the Meeting List empty state.</summary>
+    public const string NoMeetings = "No meetings yet.";
+
+    /// <summary>EXPERIENCE.md, Meeting table — the first column, and the dialog's title field.</summary>
+    public const string Title = "Title";
+
+    /// <summary>EXPERIENCE.md, Meeting table — the second column, and the dialog's date field.</summary>
+    public const string Date = "Date";
+
+    /// <summary>EXPERIENCE.md, Meeting table — the run count column. Zero until Story 2.5.</summary>
+    public const string Runs = "Runs";
+
+    /// <summary>
+    /// EXPERIENCE.md, Meeting table — the tracked-action count column. Zero until Story 3.1. The
+    /// Glossary spells it "Tracked Action", so the column keeps both capitals.
+    /// </summary>
+    public const string TrackedActions = "Tracked Actions";
+
+    /// <summary>EXPERIENCE.md, New meeting dialog — the chip input's visible label.</summary>
+    public const string Attendees = "Attendees";
+
+    /// <summary>EXPERIENCE.md, New meeting dialog — the confirming button.</summary>
+    public const string Create = "Create";
+
+    /// <summary>
+    /// The dismissing button on every dialog. EXPERIENCE.md's Interaction Primitives give every
+    /// confirm dialog a way out that is not the Escape key.
+    /// </summary>
+    public const string Cancel = "Cancel";
+
+    /// <summary>
+    /// Meeting Detail's heading while the meeting is still loading, and when the load failed. The
+    /// page has to render an h1 in every state it can be in: App.razor's
+    /// <c>&lt;FocusOnNavigate Selector="h1" /&gt;</c> looks once, after the first render following
+    /// the navigation, and the title is not known yet.
+    /// </summary>
+    public const string Meeting = "Meeting";
+
+    /// <summary>EXPERIENCE.md, Notes paste area — the region heading and the textarea's label.</summary>
+    public const string Notes = "Notes";
+
+    /// <summary>EXPERIENCE.md, Notes paste area — the write-once action, and its confirm button.</summary>
+    public const string SaveNotes = "Save notes";
+
+    /// <summary>
+    /// Announced through the snackbar when the write succeeds. The notes region swaps to its
+    /// read-only branch in the same render, which takes the Save button — the control MudBlazor
+    /// returns focus to — out of the tree, so without this the one irreversible write in the app
+    /// is the only outcome that says nothing.
+    /// </summary>
+    public const string NotesSaved = "Notes saved.";
+
+    /// <summary>
+    /// ADR-002 made visible. EXPERIENCE.md, Notes paste area: the caption beside the button, and
+    /// the same sentence repeated by the confirm dialog, which is why it is one constant.
+    /// </summary>
+    public const string NotesImmutable = "Notes cannot be changed after saving";
+
+    /// <summary>
+    /// EXPERIENCE.md, Notes paste area — the read-only caption, opened by this and closed by
+    /// <see cref="NotesSavedSuffix"/> around <c>Formats.Instant</c>. Declared as a pair for the
+    /// same reason <see cref="LoadFailurePrefix"/> is: the sentence is assembled in one place.
+    /// </summary>
+    public const string NotesSavedPrefix = "Saved ";
+
+    /// <summary>The second half of the read-only notes caption. See <see cref="NotesSavedPrefix"/>.</summary>
+    public const string NotesSavedSuffix = ", immutable";
+
+    /// <summary>
+    /// EXPERIENCE.md, New meeting dialog — "Validation messages under each field". Declarative
+    /// and per-field, so the message names what is missing rather than saying the form is wrong.
+    /// </summary>
+    public const string TitleRequired = "Title is required.";
+
+    /// <summary>The Title field's length message. The contract caps it at 200 characters.</summary>
+    public const string TitleTooLong = "Title must be 200 characters or fewer.";
+
+    /// <summary>The Date field's message. EXPERIENCE.md makes the date required.</summary>
+    public const string DateRequired = "Date is required.";
+
+    /// <summary>
+    /// The attendee chip input's message. EXPERIENCE.md bounds each chip at 1 to 100 characters;
+    /// the empty case is silent because an empty entry is simply not added.
+    /// </summary>
+    public const string AttendeeTooLong = "An attendee must be 100 characters or fewer.";
+
+    /// <summary>
+    /// The placeholder for a field with no value, used by Meeting Detail for a meeting nobody
+    /// attended. An ASCII hyphen rather than an em dash: this vocabulary is ASCII plus U+2019.
+    /// </summary>
+    public const string NoValue = "-";
 }

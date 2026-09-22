@@ -36,6 +36,27 @@ public sealed class VoiceAndFormatsTests
         { nameof(Voice.SessionExpired), "Session expired. Sign in again." },
         { nameof(Voice.RoleNotAllowed), "Your role does not allow this." },
         { nameof(Voice.AlreadyChanged), "Already changed. Reloading." },
+        { nameof(Voice.NewMeeting), "New meeting" },
+        { nameof(Voice.NoMeetings), "No meetings yet." },
+        { nameof(Voice.Title), "Title" },
+        { nameof(Voice.Date), "Date" },
+        { nameof(Voice.Runs), "Runs" },
+        { nameof(Voice.TrackedActions), "Tracked Actions" },
+        { nameof(Voice.Attendees), "Attendees" },
+        { nameof(Voice.Create), "Create" },
+        { nameof(Voice.Cancel), "Cancel" },
+        { nameof(Voice.Meeting), "Meeting" },
+        { nameof(Voice.Notes), "Notes" },
+        { nameof(Voice.SaveNotes), "Save notes" },
+        { nameof(Voice.NotesSaved), "Notes saved." },
+        { nameof(Voice.NotesImmutable), "Notes cannot be changed after saving" },
+        { nameof(Voice.NotesSavedPrefix), "Saved " },
+        { nameof(Voice.NotesSavedSuffix), ", immutable" },
+        { nameof(Voice.TitleRequired), "Title is required." },
+        { nameof(Voice.TitleTooLong), "Title must be 200 characters or fewer." },
+        { nameof(Voice.DateRequired), "Date is required." },
+        { nameof(Voice.AttendeeTooLong), "An attendee must be 100 characters or fewer." },
+        { nameof(Voice.NoValue), "-" },
     };
 
     [Theory]
@@ -117,6 +138,46 @@ public sealed class VoiceAndFormatsTests
             Assert.Equal(
                 "2026-09-21 14:03 UTC",
                 Formats.Instant(new DateTimeOffset(2026, 9, 21, 14, 3, 0, TimeSpan.Zero)));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = original;
+        }
+    }
+
+    [Fact]
+    public void The_immutable_notes_caption_reads_as_experience_md_writes_it()
+    {
+        // EXPERIENCE.md: a caption "Saved {timestamp}, immutable". The sentence is assembled from
+        // the prefix and suffix rather than typed into the page, so this is where it is checked.
+        DateTimeOffset saved = new(2026, 9, 21, 14, 3, 0, TimeSpan.Zero);
+
+        Assert.Equal(
+            "Saved 2026-09-21 14:03 UTC, immutable",
+            Voice.NotesSavedPrefix + Formats.Instant(saved) + Voice.NotesSavedSuffix);
+    }
+
+    [Fact]
+    public void A_count_renders_against_its_limit_with_group_separators()
+    {
+        // The notes paste area's live count. EXPERIENCE.md's limit is 50,000.
+        Assert.Equal("0 / 50,000", Formats.Count(0, 50_000));
+        Assert.Equal("1,234 / 50,000", Formats.Count(1_234, 50_000));
+    }
+
+    [Theory]
+    [InlineData("de-DE")]
+    [InlineData("ar-SA")]
+    public void The_count_ignores_the_current_culture(string culture)
+    {
+        // Under de-DE an N0 format renders the limit as 50.000, and under ar-SA with Eastern
+        // Arabic digits. A WebAssembly host carries whatever culture the browser has.
+        CultureInfo original = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(culture);
+
+        try
+        {
+            Assert.Equal("1,234 / 50,000", Formats.Count(1_234, 50_000));
         }
         finally
         {

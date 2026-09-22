@@ -1,0 +1,242 @@
+@page "/meetings"
+@using ActionLedger.Web.Features.Meetings.Data
+
+@* FR-3 and UX-DR12 — the Meeting List, and the app's first protected route. EXPERIENCE.md calls
+   the unauthenticated redirect "a route-level auth check, not a router guard", so the page checks
+   for itself on initialise, exactly as LoginPage does in the opposite direction.
+
+   AD-14 — nothing here is a generated type. MeetingsService hands back MeetingPage and
+   MeetingListItem, so this file never sees PagedResultOfMeetingSummaryDto or ApiException.
+
+   The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to. *@
+
+@inject MeetingsService Meetings
+@inject SessionState Session
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+
+@* Nothing renders for an unauthenticated visitor. OnInitialized navigates them away, but a
+   navigation is not an unmount: leaving the markup up would issue the list request anyway and
+   flash a table of someone else's meetings on the way to the login form. *@
+@if (Session.IsSignedIn)
+{
+    <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@Voice.Meetings</MudText>
+
+    @* Disabled while a dialog is open. EXPERIENCE.md bans modal stacks deeper than one, and
+       without this a double click opens the New meeting dialog twice. *@
+    <MudButton id="@NewMeetingId"
+               Variant="Variant.Filled"
+               Color="Color.Primary"
+               Class="mb-4"
+               Disabled="@dialogOpen"
+               OnClick="OpenNewMeetingAsync">@Voice.NewMeeting</MudButton>
+
+    @if (failure is not null)
+    {
+        @* UX-DR19 — above the table, because the table body is empty when this is showing.
+           Retry re-requests the page the pager is already on rather than resetting to page 1. *@
+        <div class="mb-4">
+            <LoadFailure Title="@failure.Title" OnRetry="RetryAsync" />
+        </div>
+    }
+
+    @* ServerData rather than Items: the API is paged and counts `total` across every page, so
+       handing MudBlazor one page's rows would give it a paginator over 50 rows it already has. *@
+    <MudTable @ref="table"
+              T="MeetingListItem"
+              ServerData="LoadAsync"
+              RowsPerPage="PageSize"
+              OnRowClick="OpenRow"
+              Hover="true"
+              Dense="true">
+        <HeaderContent>
+            <MudTh>@Voice.Title</MudTh>
+            <MudTh>@Voice.Date</MudTh>
+            <MudTh>@Voice.Runs</MudTh>
+            <MudTh>@Voice.TrackedActions</MudTh>
+        </HeaderContent>
+        <RowTemplate>
+            @* EXPERIENCE.md asks for "row click opens detail" and "rows are also focusable and
+               open on Enter". MudTable renders its own <tr> and splats nothing onto it, so the
+               keyboard half is a real anchor in the first cell: focusable, opens on Enter, and
+               announced as a link. OnRowClick covers the mouse.
+
+               The anchor does its own navigating, because all three parts are needed and each
+               one breaks without the others. Left alone, a click on the link bubbles to the row
+               and Blazor's own document-level anchor listener also fires: two history entries for
+               one URL, so Back lands on the page the user is already looking at. stopPropagation
+               silences the row — but it also keeps the event from reaching that listener, which
+               would leave the browser to follow the href as a full page load. preventDefault
+               stops that, and the handler is then the single navigation that remains.
+
+               The cost is a modified click: ctrl or cmd click no longer opens a new tab, because
+               preventDefault takes the browser's default with it. Middle click is unaffected —
+               it raises auxclick, not click. *@
+            <MudTd DataLabel="@Voice.Title">
+                <a href="@HrefFor(context.Id)"
+                   @onclick="@(() => Open(context.Id))"
+                   @onclick:preventDefault
+                   @onclick:stopPropagation>@context.Title</a>
+            </MudTd>
+            <MudTd DataLabel="@Voice.Date">@Formats.Date(context.Date)</MudTd>
+            <MudTd DataLabel="@Voice.Runs">@context.RunCount</MudTd>
+            <MudTd DataLabel="@Voice.TrackedActions">@context.TrackedActionCount</MudTd>
+        </RowTemplate>
+        <NoRecordsContent>
+            @* Only when the server actually said there are none. A failed load also leaves the
+               body empty, and "No meetings yet." over a 500 would be a lie. *@
+            @if (failure is null)
+            {
+                <MudText Typo="Typo.body1" id="@NoMeetingsId" GutterBottom="true">@Voice.NoMeetings</MudText>
+
+                @* Same accessible name as the header's button, so a screen-reader user hearing
+                   "New meeting, button" twice has nothing to tell them apart. The notice is what
+                   distinguishes this one. *@
+                <MudButton id="@NewMeetingEmptyId"
+                           Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Disabled="@dialogOpen"
+                           aria-describedby="@NoMeetingsId"
+                           OnClick="OpenNewMeetingAsync">@Voice.NewMeeting</MudButton>
+            }
+        </NoRecordsContent>
+        <PagerContent>
+            <MudTablePager />
+        </PagerContent>
+    </MudTable>
+}
+
+@code {
+    /// <summary>EXPERIENCE.md, Meeting table — "The paginator appears at 50 rows."</summary>
+    public const int PageSize = 50;
+
+    /// <summary>The header's New meeting button.</summary>
+    public const string NewMeetingId = "new-meeting";
+
+    /// <summary>
+    /// The empty state's New meeting button. EXPERIENCE.md's "No Meetings" row asks for a primary
+    /// button there, and it is a second element rather than the header's one moved: the header
+    /// affordance is where a returning user looks for it whether or not the list is empty.
+    /// </summary>
+    public const string NewMeetingEmptyId = "new-meeting-empty";
+
+    /// <summary>The empty-state notice, and what the button beside it is described by.</summary>
+    public const string NoMeetingsId = "no-meetings";
+
+    /// <summary>Where the login redirect sends an unauthenticated visitor.</summary>
+    private const string LoginRoute = "/login";
+
+    private MudTable<MeetingListItem>? table;
+    private ApiFailure? failure;
+    private bool dialogOpen;
+
+    protected override void OnInitialized()
+    {
+        // The route-level check. Capturing first is what makes signing in land back here rather
+        // than on the default destination; SessionState.TakeAttemptedRoute hands it back once.
+        if (!Session.IsSignedIn)
+        {
+            Session.CaptureAttemptedRoute(CurrentRoute());
+            Navigation.NavigateTo(LoginRoute);
+        }
+    }
+
+    /// <summary>
+    /// MudBlazor's <c>TableState.Page</c> is 0-based and the API's <c>page</c> is 1-based. This
+    /// is the single place that can be off by one, which is why it has a test of its own.
+    /// </summary>
+    private async Task<TableData<MeetingListItem>> LoadAsync(TableState state, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+
+        failure = null;
+
+        MeetingOutcome<MeetingPage> outcome;
+
+        try
+        {
+            outcome = await Meetings.ListAsync(state.Page + 1, state.PageSize, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            // MudTable cancels the outstanding request before starting the next one and then
+            // awaits ServerData with no try/catch of its own, while MeetingsService deliberately
+            // lets a cancellation the caller asked for propagate. The superseding call owns the
+            // notice and the rows, so this one says nothing.
+            //
+            // Kept as defence rather than as a fix: every call into this page today arrives on a
+            // component lifecycle or event task, and Renderer.GetErrorHandledTask skips the error
+            // boundary entirely when the faulted task is Canceled — which is what an async method
+            // throwing OperationCanceledException produces. So the escape is currently swallowed
+            // by the renderer and no test can tell this arm from its absence. What it buys is
+            // independence from that: the guarantee belongs to Blazor, not to this page, and a
+            // caller that is not a lifecycle task would get no such courtesy.
+            return new TableData<MeetingListItem> { Items = [], TotalItems = 0 };
+        }
+
+        failure = outcome.Failure;
+
+        // MudTable re-renders itself when ServerData returns, but the notice hangs off this
+        // component, so without this a failed load leaves the table empty and says nothing —
+        // and a successful Retry leaves the notice up over the rows it just fetched.
+        StateHasChanged();
+
+        if (failure is not null)
+        {
+            return new TableData<MeetingListItem> { Items = [], TotalItems = 0 };
+        }
+
+        MeetingPage page = outcome.Value!;
+
+        return new TableData<MeetingListItem> { Items = page.Items, TotalItems = page.Total };
+    }
+
+    private Task RetryAsync() => table is null ? Task.CompletedTask : table.ReloadServerData();
+
+    private void OpenRow(TableRowClickEventArgs<MeetingListItem> args)
+    {
+        ArgumentNullException.ThrowIfNull(args);
+
+        if (args.Item is { } item)
+        {
+            Open(item.Id);
+        }
+    }
+
+    private void Open(Guid id) => Navigation.NavigateTo(HrefFor(id));
+
+    private async Task OpenNewMeetingAsync()
+    {
+        if (dialogOpen)
+        {
+            return;
+        }
+
+        // Claimed before the dialog opens, and rendered, so both buttons draw disabled. Without
+        // it the handler parks on the result and a second click opens a second dialog on top.
+        dialogOpen = true;
+        StateHasChanged();
+
+        try
+        {
+            IDialogReference dialog = await Dialogs.ShowAsync<NewMeetingDialog>(Voice.NewMeeting);
+            DialogResult? result = await dialog.Result;
+
+            // Cancelled, dismissed, or closed with nothing: the list stays exactly as it was.
+            if (result is null or { Canceled: true } || result.Data is not Guid id)
+            {
+                return;
+            }
+
+            Navigation.NavigateTo(HrefFor(id));
+        }
+        finally
+        {
+            dialogOpen = false;
+        }
+    }
+
+    private string CurrentRoute() => "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+
+    private static string HrefFor(Guid id) => "/meetings/" + id;
+}
