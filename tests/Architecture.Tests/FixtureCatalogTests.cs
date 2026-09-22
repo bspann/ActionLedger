@@ -1,3 +1,4 @@
+using ActionLedger.Infrastructure.Ai;
 using ActionLedger.Infrastructure.Seed;
 using System.Globalization;
 using System.Text.Json;
@@ -136,6 +137,12 @@ public sealed class FixtureCatalogTests
 
     private static readonly IReadOnlyList<FixtureCase> Catalog = LoadCatalog();
 
+    /// <summary>
+    /// The embedded catalog as <c>ActionLedger.Infrastructure</c> loads it, so the two independent
+    /// implementations of the front-matter rule can be compared against each other.
+    /// </summary>
+    private static readonly FixtureCatalog ProductionCatalog = new();
+
     /// <summary>Every case stem, for the per-case theories.</summary>
     public static TheoryData<string> TheCaseStems
     {
@@ -150,6 +157,47 @@ public sealed class FixtureCatalogTests
 
             return stems;
         }
+    }
+
+    // --- the split this file and production both perform ---------------------------------------
+
+    /// <summary>
+    /// The production loader's notes body, per case, byte-equal to this file's.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is deferred entry DW-15's actual cause, not its symptom. The front-matter rule is
+    /// written twice — <see cref="SplitFrontMatter"/> here and <c>FixtureCatalog</c>'s own regex in
+    /// <c>ActionLedger.Infrastructure</c> — and prose in <c>README.md</c> was the only thing
+    /// holding them together. Every assertion in this file reads a body this file computed, so a
+    /// production loader that trimmed, re-wrapped or cut at a different offset satisfied all of
+    /// them and still disagreed at runtime.
+    /// </para>
+    /// <para>
+    /// Byte equality, not excerpt verification: every committed excerpt is an interior sentence, so
+    /// a trim cannot break one. What a trim does break is the normalized hash the Fake provider
+    /// keys on, and only comparing the bodies themselves catches that.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(TheCaseStems))]
+    public void The_production_loader_splits_the_body_exactly_as_this_file_does(string stem)
+    {
+        FixtureCase expected = Case(stem);
+
+        ActionLedger.Infrastructure.Ai.FixtureCase produced =
+            ProductionCatalog.Cases.SingleOrDefault(fixture => string.Equals(fixture.Stem, stem, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"The production FixtureCatalog holds no case '{stem}'.");
+
+        Assert.Equal(expected.Body, produced.Notes);
+    }
+
+    [Fact]
+    public void The_production_loader_holds_exactly_the_cases_this_file_reads()
+    {
+        Assert.Equal(
+            Catalog.Select(fixture => fixture.Stem).Order(StringComparer.Ordinal),
+            ProductionCatalog.Cases.Select(fixture => fixture.Stem).Order(StringComparer.Ordinal));
     }
 
     // --- the folder ---------------------------------------------------------------------------

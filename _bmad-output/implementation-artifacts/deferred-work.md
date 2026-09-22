@@ -115,3 +115,35 @@ location: tests/Architecture.Tests/FixtureCatalogTests.cs (SplitFrontMatter, Tri
 source_spec: `spec-2-3-fixture-catalog-and-prompt-v1-saturday-evening.md`
 reason: FixtureCatalogTests.SplitFrontMatter uses the regex \A---\r?\n(?<front>.*?)^---[ \t]*\r?\n and Trigrams splits on whitespace keeping punctuation, compared OrdinalIgnoreCase. Story 2.4's ExcerptVerifier and Story 6.2's injection scorer will each implement their own; nothing binds them to these, and only a sentence of prose in fixtures/extraction/README.md describes the intended split. Unverified because both consumers are unwritten: if 2.4 trims the body differently, or 6.2 strips punctuation before tokenizing, the catalog can satisfy every assertion here and still behave differently at runtime. No near-miss exists in the current content — every excerpt is an interior single-line sentence and no legitimate action is close to a shared trigram — so this is coupling rather than a live failure today. What would settle it: when 2.4 and 6.2 land, assert their loaders against this catalog rather than re-deriving the rules, or lift the split and tokenizer into one shared place both read.
 status: open
+
+### DW-16: `Ai:CallTimeoutSeconds` accepts up to 600, so two provider calls can spend 1,200 seconds against the 180-second run ceiling NFR-1 states and the extractor's own comment claims to enforce.
+origin: spec-deferred 72a7d241326b
+location: src/ActionLedger.Api/Configuration/AiOptions.cs
+source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
+severity: low
+reason: `src/ActionLedger.Api/Configuration/AiOptions.cs` carries `[Range(1, 600)]` on `CallTimeoutSeconds`, and `ChatClientActionExtractor` bounds each call by that value with no whole-run deadline. The `[Range]` predates this story, and at the shipped default of 90 two calls are 180 seconds exactly, so nothing is wrong today. It becomes reachable when Story 2.7 wires a provider that can actually spend the budget. What would settle it: either narrow the option's range to what two calls may spend inside 180 seconds, or give the retry loop a whole-run deadline in addition to the per-call one.
+status: open
+
+### DW-17: Any `OperationCanceledException` the provider raises for its own reasons is persisted and shown to a human as a budget timeout, because the timeout token is scoped inside `CallAsync`.
+origin: spec-deferred 324c1dee3420
+location: src/ActionLedger.Infrastructure/Ai/ChatClientActionExtractor.cs
+source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
+severity: low
+reason: `ChatClientActionExtractor.ExtractAsync` catches `OperationCanceledException` unfiltered after the caller-cancellation case and writes "The provider did not answer within Ai:CallTimeoutSeconds". The `CancellationTokenSource` that would distinguish a budget expiry lives in `CallAsync` and is disposed before the catch runs. Unreachable today: the Fake throws nothing, and it is the only registered provider. It arrives with Story 2.7's HTTP clients, whose internal timeouts surface as `TaskCanceledException`. What would settle it: catch inside `CallAsync`, or surface the timeout token so the two causes are distinguishable.
+status: open
+
+### DW-18: A provider exception's `Message` is interpolated verbatim into the persisted failure reason, which the class doc three lines above promises will name what went wrong rather than what the call carried.
+origin: spec-deferred 3cd28c9be1ba
+location: src/ActionLedger.Infrastructure/Ai/ChatClientActionExtractor.cs
+source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
+severity: low
+reason: `ChatClientActionExtractor` builds the reason as `$"...: {exception.GetType().Name}: {exception.Message}"`. The extractor controls its own strings but not an SDK's, and HTTP client exceptions can carry a request URI or a response excerpt. Nothing reaches that string today because the Fake throws nothing. What would settle it: when Story 2.7 lands, decide whether to truncate or allowlist what is taken from an exception before it is persisted and rendered.
+status: open
+
+### DW-19: `PromptCatalog`'s numeric version ordering is never exercised with more than one version, so replacing it with a string sort would leave every test green until a `v10` lands beside a `v9`.
+origin: spec-deferred dca494d0d35f
+location: src/ActionLedger.Infrastructure/Ai/PromptCatalog.cs
+source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
+severity: low
+reason: Only `prompts/extract-actions.v1.md` is embedded, so `Versions` is a one-element list and `Current == Versions[^1]` holds trivially. `PromptCatalog` reads this assembly's own manifest resources through the static `EmbeddedContent`, so closing this needs either a seam for the resource source or a second embedded prompt file. What would settle it: add the assertion when a second prompt revision exists, which is Story 7.1's territory.
+status: open

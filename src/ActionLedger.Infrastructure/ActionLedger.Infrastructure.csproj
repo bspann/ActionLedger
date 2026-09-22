@@ -16,6 +16,24 @@
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Identity.Core" />
+    <!-- AD-11: the one AI SDK in the tree, and it stops at this ring. -->
+    <PackageReference Include="Microsoft.Extensions.AI" />
+  </ItemGroup>
+
+  <!--
+    AD-6 and AD-21 — the prompt catalog and the fixture catalog travel inside this assembly, so the
+    api image, the tests, and the Evaluation Gate all read the same bytes with no path
+    configuration and no copy step. The AD-6 line is quoted verbatim from the architecture spine.
+
+    README.md is documentation of the catalog's format, not a case. It is excluded because the
+    loader pairs every embedded `<stem>.md` with a `<stem>.expected.json`, and a README with no
+    front matter and no answer file would fail that pairing rather than be ignored.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="../../prompts/*.md" LogicalName="prompts/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="../../fixtures/extraction/*"
+                      Exclude="../../fixtures/extraction/README.md"
+                      LogicalName="fixtures/extraction/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
