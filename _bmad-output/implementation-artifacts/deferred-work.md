@@ -122,7 +122,8 @@ location: src/ActionLedger.Api/Configuration/AiOptions.cs
 source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
 severity: low
 reason: `src/ActionLedger.Api/Configuration/AiOptions.cs` carries `[Range(1, 600)]` on `CallTimeoutSeconds`, and `ChatClientActionExtractor` bounds each call by that value with no whole-run deadline. The `[Range]` predates this story, and at the shipped default of 90 two calls are 180 seconds exactly, so nothing is wrong today. It becomes reachable when Story 2.7 wires a provider that can actually spend the budget. What would settle it: either narrow the option's range to what two calls may spend inside 180 seconds, or give the retry loop a whole-run deadline in addition to the per-call one.
-status: open
+resolution: Story 2.7 (`spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md`) narrowed `AiOptions.CallTimeoutSeconds` to `[Range(1, 90)]`, so two calls always fit inside 180 s; `StartupValidationTests` pins 91 as a startup failure.
+status: resolved
 
 ### DW-17: Any `OperationCanceledException` the provider raises for its own reasons is persisted and shown to a human as a budget timeout, because the timeout token is scoped inside `CallAsync`.
 origin: spec-deferred 324c1dee3420
@@ -130,6 +131,7 @@ location: src/ActionLedger.Infrastructure/Ai/ChatClientActionExtractor.cs
 source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
 severity: low
 reason: `ChatClientActionExtractor.ExtractAsync` catches `OperationCanceledException` unfiltered after the caller-cancellation case and writes "The provider did not answer within Ai:CallTimeoutSeconds". The `CancellationTokenSource` that would distinguish a budget expiry lives in `CallAsync` and is disposed before the catch runs. Unreachable today: the Fake throws nothing, and it is the only registered provider. It arrives with Story 2.7's HTTP clients, whose internal timeouts surface as `TaskCanceledException`. What would settle it: catch inside `CallAsync`, or surface the timeout token so the two causes are distinguishable.
+note: Story 2.7 (`spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md`) closed the SDK-timeout path by construction: both real factories set `NetworkTimeout` to `Ai:CallTimeoutSeconds + 10 s` and `ClientRetryPolicy(maxRetries: 0)`, so the extractor's budget token always fires first and an SDK-internal timeout cannot be the cancellation that reaches the catch. The extractor is unchanged, so a provider that raises `OperationCanceledException` for some other reason would still be mislabelled.
 status: open
 
 ### DW-18: A provider exception's `Message` is interpolated verbatim into the persisted failure reason, which the class doc three lines above promises will name what went wrong rather than what the call carried.
@@ -138,6 +140,7 @@ location: src/ActionLedger.Infrastructure/Ai/ChatClientActionExtractor.cs
 source_spec: `spec-2-4-extraction-seam-output-validation-and-the-fake-provider.md`
 severity: low
 reason: `ChatClientActionExtractor` builds the reason as `$"...: {exception.GetType().Name}: {exception.Message}"`. The extractor controls its own strings but not an SDK's, and HTTP client exceptions can carry a request URI or a response excerpt. Nothing reaches that string today because the Fake throws nothing. What would settle it: when Story 2.7 lands, decide whether to truncate or allowlist what is taken from an exception before it is persisted and rendered.
+note: Story 2.7 (`spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md`) wired the real OpenAI SDK. Its exception messages carry no credential (the api key travels in the Authorization header, never in the message), but a `ClientResultException` message can include the response body excerpt, so the truncate-or-allowlist decision is still open.
 status: open
 
 ### DW-19: `PromptCatalog`'s numeric version ordering is never exercised with more than one version, so replacing it with a string sort would leave every test green until a `v10` lands beside a `v9`.
@@ -153,6 +156,7 @@ origin: spec-deferred e91bd47ec986
 location: src/ActionLedger.Application/Ai/ExtractionResult.cs:130
 source_spec: `spec-2-5-extraction-run-and-proposals-persisted-with-ai-proposal-revi.md`
 reason: `src/ActionLedger.Application/Ai/ExtractionResult.cs:130` builds `Failed(reason, metrics)` with no guard on `reason`. `ExtractionRun.Start` refuses a Failed run whose reason is blank (`src/ActionLedger.Domain/Extraction/ExtractionRun.cs`, `RequireReasonMatchesOutcome`), so a blank reason becomes a `DomainRuleException` and the controller answers 409 instead of the 201-with-Outcome-Failed that AD-11 fixes. Unreachable today: every reason `ChatClientActionExtractor` builds is a non-empty interpolation, and the Fake is the only registered provider. `ExtractionResult` is Story 2.4's file, so the missing guard predates this story; 2.5 is only the first consumer. What would settle it: when Story 2.7 wires a provider whose exception message can be empty, decide whether `Failed` rejects a blank reason or the aggregate substitutes a placeholder rather than throwing.
+note: Story 2.7 (`spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md`) wired the real OpenAI SDK; the extractor's reason is always a non-empty interpolation (`attempt N of 2: TypeName: ...`) even when the SDK's message is empty, and the SDK's messages carry no credential. The missing guard on `ExtractionResult.Failed` remains.
 status: open
 
 ### DW-21: `AiOptions`' two provider model names carry no length bound mirroring `ExtractionRunMetadata.ModelMaxLength`, so an over-long operator-supplied model turns every run into a 409 with no row.
@@ -161,4 +165,5 @@ location: src/ActionLedger.Api/Configuration/AiOptions.cs
 source_spec: `spec-2-5-extraction-run-and-proposals-persisted-with-ai-proposal-revi.md`
 severity: medium
 reason: `AiOptions.LocalOpenAI.Model` and `AiOptions.AzureOpenAI.Model` are free strings with no `[StringLength]`, while `ExtractionRunMetadata.Validated()` throws `DomainRuleException` for a blank or over-200-character model — and `ApiExceptionHandler` maps that to 409, after the provider call, with no `ExtractionRun` persisted. That is the outcome AD-11 exists to prevent, and it would fail on every run rather than once. Unreachable today: the Fake is the only registered provider and supplies `fixture-catalog`, its own constant, so nothing operator-supplied reaches the guard. `AiOptions` is Story 2.4's file, so the missing bound predates this story; 2.5 is only the first code that turns it into a status code. What would settle it: when Story 2.7 wires LM Studio, Ollama and Azure OpenAI, decide whether the options bind with `[StringLength]` tied to the Domain constants and fail at startup (with the constant-agreement test `ProposedActionShapeTests` already models for the validator bounds), or
-status: open
+resolution: Story 2.7 (`spec-2-7-real-providers-through-the-same-seam-lm-studio-ollama-and-az.md`) made `AiOptionsValidator` refuse an active provider's model longer than `ExtractionRunMetadata.ModelMaxLength` at startup, naming the key; `StartupValidationTests` pins a 201-character model.
+status: resolved

@@ -31,8 +31,25 @@ public interface IChatClientFactory
     /// </summary>
     string Model { get; }
 
+    /// <summary>
+    /// The host of the endpoint this provider calls, for the startup log line. Null when there is
+    /// none (the Fake) or the configured URL does not parse. Never carries a credential.
+    /// </summary>
+    string? EndpointHost => null;
+
     /// <summary>Builds the chat client the single extractor talks to.</summary>
     IChatClient Create();
+
+    /// <summary>
+    /// AD-16 — the provider-specific startup probe, awaited by <c>ProviderStartupProbe</c> before
+    /// the host serves. Reachability for a local server, credential presence for Azure, nothing for
+    /// the Fake.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The provider cannot serve. The message names <c>Ai:Provider</c>, the failing key or URL, and
+    /// what to do — and never a credential.
+    /// </exception>
+    Task VerifyAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>
