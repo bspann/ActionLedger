@@ -86,12 +86,52 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
 
-    // Story 3.2 publishes the decision operation; Story 3.5 is the first web code to call it, so
-    // until then a service that reached for it fails here rather than passing quietly.
-    public Task<ProposalDecisionDto> DecideProposedActionAsync(Guid id, DecideProposalCommand body) => throw NotExercised();
+    /// <summary>Every decision sent, in order, with the proposal it was sent for.</summary>
+    internal List<(Guid Id, DecideProposalCommand Command)> Decisions { get; } = [];
 
-    public Task<ProposalDecisionDto> DecideProposedActionAsync(Guid id, DecideProposalCommand body, CancellationToken cancellationToken) =>
-        throw NotExercised();
+    /// <summary>Thrown from <c>DecideProposedActionAsync</c> instead of returning, when set.</summary>
+    internal Exception? DecideThrows { get; set; }
+
+    /// <summary>Awaited by <c>DecideProposedActionAsync</c> before it answers, so a test can hold a decision in flight.</summary>
+    internal Task? DecideGate { get; set; }
+
+    /// <summary>
+    /// Run after the gate and before the answer, so a test can make the server's state follow the
+    /// decision — typically by replacing <see cref="Run"/> with the decided run the refresh reads.
+    /// Not run when <see cref="DecideThrows"/> is set.
+    /// </summary>
+    internal Action<Guid, DecideProposalCommand>? OnDecide { get; set; }
+
+    internal ReviewState DecidedState { get; set; } = ReviewState.Approved;
+
+    public Task<ProposalDecisionDto> DecideProposedActionAsync(Guid id, DecideProposalCommand body) =>
+        DecideProposedActionAsync(id, body, CancellationToken.None);
+
+    public async Task<ProposalDecisionDto> DecideProposedActionAsync(Guid id, DecideProposalCommand body, CancellationToken cancellationToken)
+    {
+        Decisions.Add((id, body));
+
+        if (DecideGate is not null)
+        {
+            await DecideGate;
+        }
+
+        if (DecideThrows is not null)
+        {
+            throw DecideThrows;
+        }
+
+        OnDecide?.Invoke(id, body);
+
+        return new ProposalDecisionDto
+        {
+            ProposedActionId = id,
+            ReviewState = DecidedState,
+            TrackedActionId = DecidedState is ReviewState.Rejected ? null : Guid.CreateVersion7(),
+            DecidedByUserId = Guid.Empty,
+            DecidedAt = DateTimeOffset.UnixEpoch,
+        };
+    }
 
     internal int StartExtractionRunCalls { get; private set; }
 

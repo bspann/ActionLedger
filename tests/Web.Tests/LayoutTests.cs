@@ -94,6 +94,17 @@ public sealed class LayoutTests : BunitContext
         Assert.Contains("mud-container--gutters", container.ClassList, StringComparer.Ordinal);
     }
 
+    [Fact]
+    public void The_body_is_the_one_main_landmark()
+    {
+        IRenderedComponent<MainLayout> layout = RenderLayout();
+
+        // axe's landmark-one-main and region: every page's content inside exactly one <main>.
+        AngleSharp.Dom.IElement main = Assert.Single(layout.FindAll("main"));
+
+        Assert.NotNull(main.QuerySelector($"#{BodyProbeId}"));
+    }
+
     private IRenderedComponent<MainLayout> RenderLayout() =>
         Render<MainLayout>(parameters => parameters.Add(
             layout => layout.Body,

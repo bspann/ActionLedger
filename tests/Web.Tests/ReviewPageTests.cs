@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor;
+using MudBlazor.Extensions;
 using MudBlazor.Services;
 using Xunit;
 using ApiReviewState = ActionLedger.Web.Core.Api.ReviewState;
@@ -443,20 +444,421 @@ public sealed class ReviewPageTests : BunitContext
         Assert.Equal(Voice.NoReasonGiven, page.Find(".al-rejection").TextContent);
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Decisions
+    // ---------------------------------------------------------------------------------------
+
     [Fact]
-    public void The_card_buttons_are_left_unbound_until_story_3_5()
+    public void The_roster_loads_with_the_screen_and_reaches_the_owner_picker()
     {
+        SignIn();
+        client.Roster = Roster();
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        Assert.Equal(1, client.ListUsersCalls);
+
+        CardAt(page, 0).Find(".al-edit").Click();
+
+        Assert.Equal(
+            [null, Dana, Priya],
+            page.FindComponents<MudSelectItem<Guid?>>().Select(item => item.Instance.GetState(x => x.Value)));
+    }
+
+    [Fact]
+    public async Task A_plain_approve_sends_the_proposed_values_and_the_refreshed_card_is_approved()
+    {
+        SignIn();
+        client.Roster = Roster();
+
+        ProposedActionDto first = client.Run.Proposals.First();
+        first.SuggestedOwner = "dana";
+        first.SuggestedOwnerUserId = Dana;
+        first.SuggestedOwnerDisplayName = "Dana Whitfield";
+        first.SuggestedDueDate = new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
+
+        client.OnDecide = (id, _) => MarkDecided(id, ApiReviewState.Approved);
+
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        Assert.Equal("2 proposals pending", Counter(page));
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        (Guid id, DecideProposalCommand command) = Assert.Single(client.Decisions);
+        Assert.Equal(first.Id, id);
+        Assert.Equal(ReviewVerb.Approve, command.Decision);
+        Assert.Equal("Call Bob.", command.Description);
+        Assert.Equal(Dana, command.OwnerUserId);
+        Assert.Equal(new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero), command.DueDate);
+        Assert.Null(command.Reason);
+
+        // One refresh, and the decided card in the same place.
+        page.WaitForAssertion(() => Assert.Equal(2, client.GetExtractionRunCalls));
+        Assert.Equal(
+            [Voice.Approved, Voice.Pending],
+            Cards(page).Select(card => card.QuerySelector(".al-review-state")!.TextContent.Trim()));
+        Assert.Equal("Decided by Dana Whitfield", CardAt(page, 0).Find(".al-proposal-decision .al-provenance--human").TextContent.Trim());
+
+        // The counter recounts inside its live region.
+        IElement counter = page.Find($"#{PendingCounter.CounterId}");
+        Assert.Equal(Voice.OneProposalPending, counter.TextContent);
+        Assert.Equal("polite", counter.Closest("[aria-live]")?.GetAttribute("aria-live"));
+    }
+
+    [Fact]
+    public async Task Approve_with_edits_sends_the_new_owner_and_a_cleared_date_and_the_card_is_edited()
+    {
+        SignIn();
+        client.Roster = Roster();
+
+        ProposedActionDto first = client.Run.Proposals.First();
+        first.SuggestedOwnerUserId = Dana;
+        first.SuggestedDueDate = new DateTimeOffset(2026, 10, 10, 0, 0, 0, TimeSpan.Zero);
+
+        client.OnDecide = (id, _) => MarkDecided(id, ApiReviewState.Edited, dto =>
+        {
+            dto.DecidedOwnerUserId = Priya;
+            dto.DecidedOwnerDisplayName = "Priya Ramaswamy";
+        });
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        CardAt(page, 0).Find(".al-edit").Click();
+
+        await SetOwnerAsync(page, Priya);
+        await SetDueAsync(page, null);
+
+        IElement primary = CardAt(page, 0).Find(".al-approve-edits");
+        Assert.Equal(Voice.ApproveWithEdits, primary.TextContent.Trim());
+
+        await primary.ClickAsync(new MouseEventArgs());
+
+        DecideProposalCommand command = Assert.Single(client.Decisions).Command;
+        Assert.Equal(ReviewVerb.Approve, command.Decision);
+        Assert.Equal("Call Bob.", command.Description);
+        Assert.Equal(Priya, command.OwnerUserId);
+        Assert.Null(command.DueDate);
+
+        page.WaitForAssertion(() => Assert.Equal(Voice.Edited, CardAt(page, 0).Find(".al-review-state").TextContent.Trim()));
+        Assert.NotNull(CardAt(page, 0).Find(".al-proposal-proposed"));
+        Assert.Empty(CardAt(page, 0).FindAll("input, textarea"));
+    }
+
+    [Fact]
+    public async Task Reject_opens_the_dialog_and_sends_the_trimmed_reason()
+    {
+        SignIn();
+        client.OnDecide = (id, command) => MarkDecided(id, ApiReviewState.Rejected, dto => dto.RejectionReason = command.Reason);
+
+        IRenderedComponent<MudDialogProvider> dialogs = Render<MudDialogProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        // Not awaited: the handler is parked on the dialog's result until it closes.
+        Task rejecting = CardAt(page, 1).Find(".al-reject").ClickAsync(new MouseEventArgs());
+
+        dialogs.WaitForElement($"#{RejectDialog.ConfirmId}");
+        Assert.Contains(Voice.RejectDialogTitle, dialogs.Markup, StringComparison.Ordinal);
+        Assert.Contains(Voice.RejectReasonLabel, dialogs.Markup, StringComparison.Ordinal);
+        Assert.Equal(Voice.Reject, dialogs.Find($"#{RejectDialog.ConfirmId}").TextContent.Trim());
+        Assert.Equal(Voice.Cancel, dialogs.Find($"#{RejectDialog.CancelId}").TextContent.Trim());
+        Assert.Equal("TEXTAREA", dialogs.Find($"#{RejectDialog.ReasonId}").TagName);
+
+        // Every card's writes are held while the dialog is open.
+        Assert.All(page.FindAll(".al-proposal-actions button"), button => Assert.True(button.HasAttribute("disabled")));
+
+        dialogs.Find($"#{RejectDialog.ReasonId}").Input("  dup  ");
+        dialogs.Find($"#{RejectDialog.ConfirmId}").Click();
+        await rejecting;
+
+        (Guid id, DecideProposalCommand command) = Assert.Single(client.Decisions);
+        Assert.Equal(client.Run.Proposals.ElementAt(1).Id, id);
+        Assert.Equal(ReviewVerb.Reject, command.Decision);
+        Assert.Equal("dup", command.Reason);
+
+        page.WaitForAssertion(() => Assert.Equal("Reason: dup", CardAt(page, 1).Find(".al-rejection").TextContent));
+        Assert.Equal(Voice.OneProposalPending, Counter(page));
+    }
+
+    [Fact]
+    public async Task A_dismissed_reject_dialog_sends_nothing_and_hands_the_buttons_back()
+    {
+        SignIn();
+
+        IRenderedComponent<MudDialogProvider> dialogs = Render<MudDialogProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        Task rejecting = CardAt(page, 0).Find(".al-reject").ClickAsync(new MouseEventArgs());
+
+        dialogs.WaitForElement($"#{RejectDialog.CancelId}").Click();
+        await rejecting;
+
+        Assert.Empty(client.Decisions);
+        Assert.Equal(1, client.GetExtractionRunCalls);
+        page.WaitForAssertion(() =>
+            Assert.All(page.FindAll(".al-proposal-actions button"), button => Assert.False(button.HasAttribute("disabled"))));
+    }
+
+    [Fact]
+    public async Task Every_cards_writes_are_disabled_while_a_decision_is_in_flight()
+    {
+        TaskCompletionSource gate = new();
+        client.DecideGate = gate.Task;
+        client.OnDecide = (id, _) => MarkDecided(id, ApiReviewState.Approved);
+
         SignIn();
 
         IRenderedComponent<ReviewPage> page = RenderReview();
 
-        // Pressing them changes nothing and calls nothing: the decision POST is 3.5's.
-        page.Find(".al-approve").Click();
-        page.Find(".al-reject").Click();
-        page.Find(".al-edit").Click();
+        Task approving = CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
 
+        page.WaitForAssertion(() =>
+            Assert.All(page.FindAll(".al-proposal-actions button"), button => Assert.True(button.HasAttribute("disabled"))));
+        Assert.Equal(6, page.FindAll(".al-proposal-actions button").Count);
+
+        // A second decision, on either card, goes nowhere.
+        CardAt(page, 1).Find(".al-approve").Click();
+        CardAt(page, 0).Find(".al-approve").Click();
+
+        Assert.Single(client.Decisions);
+
+        gate.SetResult();
+        await approving;
+
+        page.WaitForAssertion(() => Assert.Equal(Voice.Approved, CardAt(page, 0).Find(".al-review-state").TextContent.Trim()));
+        Assert.All(CardAt(page, 1).FindAll(".al-proposal-actions button"), button => Assert.False(button.HasAttribute("disabled")));
+    }
+
+    [Fact]
+    public async Task A_conflict_refreshes_the_run_and_offers_no_retry()
+    {
+        SignIn();
+        client.DecideThrows = StubApiClient.Problem(409, "Conflict.");
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        // Another reviewer decided it first; the refresh brings their decision.
+        MarkDecided(client.Run.Proposals.First().Id, ApiReviewState.Rejected);
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        page.WaitForAssertion(() => Assert.Equal(Voice.Rejected, CardAt(page, 0).Find(".al-review-state").TextContent.Trim()));
+        Assert.Equal(2, client.GetExtractionRunCalls);
+
+        // SessionMessageHandler raises "Already changed. Reloading."; the page adds nothing.
+        Assert.DoesNotContain("Conflict.", snackbars.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(snackbars.FindAll("button"), IsRetry);
+    }
+
+    [Fact]
+    public async Task A_forbidden_decision_keeps_that_cards_writes_disabled_and_offers_no_retry()
+    {
+        SignIn();
+        client.DecideThrows = StubApiClient.Problem(403, "Forbidden.");
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        page.WaitForAssertion(() =>
+            Assert.All(CardAt(page, 0).FindAll(".al-proposal-actions button"), button => Assert.True(button.HasAttribute("disabled"))));
+
+        // Only that card: the other one is still decidable.
+        Assert.All(CardAt(page, 1).FindAll(".al-proposal-actions button"), button => Assert.False(button.HasAttribute("disabled")));
+
+        // Pressing it again sends nothing, and nothing was refreshed.
+        CardAt(page, 0).Find(".al-approve").Click();
+        Assert.Single(client.Decisions);
         Assert.Equal(1, client.GetExtractionRunCalls);
-        Assert.Equal(0, client.StartExtractionRunCalls);
+
+        Assert.DoesNotContain("Forbidden.", snackbars.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(snackbars.FindAll("button"), IsRetry);
+    }
+
+    [Fact]
+    public async Task An_unauthorized_decision_adds_no_snackbar_and_no_refresh()
+    {
+        SignIn();
+        client.DecideThrows = StubApiClient.Problem(401, "Unauthorized.");
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        // SessionMessageHandler signs out and redirects; the page adds nothing of its own.
+        Assert.Single(client.Decisions);
+        Assert.Equal(1, client.GetExtractionRunCalls);
+        Assert.DoesNotContain("Unauthorized.", snackbars.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(snackbars.FindAll("button"), IsRetry);
+    }
+
+    [Fact]
+    public async Task An_unauthorized_refresh_after_a_decision_offers_no_retry()
+    {
+        SignIn();
+        client.OnDecide = (id, _) =>
+        {
+            MarkDecided(id, ApiReviewState.Approved);
+            client.GetExtractionRunThrows = StubApiClient.Problem(401, "Unauthorized.");
+        };
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(2, client.GetExtractionRunCalls);
+        Assert.DoesNotContain("Unauthorized.", snackbars.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain(snackbars.FindAll("button"), IsRetry);
+    }
+
+    [Fact]
+    public async Task A_stale_retry_on_a_card_decided_since_sends_nothing()
+    {
+        SignIn();
+        client.DecideThrows = StubApiClient.Bare(500);
+        client.OnDecide = (id, command) => MarkDecided(id, ApiReviewState.Rejected, dto => dto.RejectionReason = command.Reason);
+
+        IRenderedComponent<MudDialogProvider> dialogs = Render<MudDialogProvider>();
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        snackbars.WaitForAssertion(() => Assert.Contains(snackbars.FindAll("button"), IsRetry));
+        IElement staleRetry = snackbars.FindAll("button").First(IsRetry);
+
+        // The same card is then rejected, and the refresh brings it back decided.
+        client.DecideThrows = null;
+        Task rejecting = CardAt(page, 0).Find(".al-reject").ClickAsync(new MouseEventArgs());
+        dialogs.WaitForElement($"#{RejectDialog.ConfirmId}").Click();
+        await rejecting;
+
+        page.WaitForAssertion(() => Assert.Equal(Voice.Rejected, CardAt(page, 0).Find(".al-review-state").TextContent.Trim()));
+        Assert.Equal(2, client.Decisions.Count);
+
+        await staleRetry.ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(2, client.Decisions.Count);
+    }
+
+    [Fact]
+    public async Task A_failed_approve_keeps_the_edits_and_retry_resends_them()
+    {
+        SignIn();
+        client.Roster = Roster();
+        client.DecideThrows = StubApiClient.Bare(500);
+        client.OnDecide = (id, _) => MarkDecided(id, ApiReviewState.Edited);
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        CardAt(page, 0).Find(".al-edit").Click();
+        CardAt(page, 0).Find("input, textarea").Input("Call Bob today.");
+        await SetOwnerAsync(page, Priya);
+
+        await CardAt(page, 0).Find(".al-approve-edits").ClickAsync(new MouseEventArgs());
+
+        snackbars.WaitForAssertion(() =>
+            Assert.Contains(Voice.UnexpectedFailureTitle, snackbars.Markup, StringComparison.Ordinal));
+
+        // Still in edit mode, with what was typed, and the buttons handed back.
+        Assert.Equal("Call Bob today.", CardAt(page, 0).Find("input, textarea").GetAttribute("value"));
+        Assert.Equal(Priya, page.FindComponent<MudSelect<Guid?>>().Instance.GetState(x => x.Value));
+        Assert.False(CardAt(page, 0).Find(".al-approve-edits").HasAttribute("disabled"));
+        Assert.Equal(1, client.GetExtractionRunCalls);
+
+        client.DecideThrows = null;
+        await snackbars.FindAll("button").First(IsRetry).ClickAsync(new MouseEventArgs());
+
+        Assert.Equal(2, client.Decisions.Count);
+        Assert.Equal(client.Decisions[0].Id, client.Decisions[1].Id);
+        Assert.Equal("Call Bob today.", client.Decisions[1].Command.Description);
+        Assert.Equal(Priya, client.Decisions[1].Command.OwnerUserId);
+
+        // The Retry comes from ISnackbar, outside the event pipeline, and still repaints.
+        page.WaitForAssertion(() => Assert.Equal(Voice.Edited, CardAt(page, 0).Find(".al-review-state").TextContent.Trim()));
+    }
+
+    [Fact]
+    public async Task A_failed_reject_retries_the_same_reason_without_reopening_the_dialog()
+    {
+        SignIn();
+        client.DecideThrows = new HttpRequestException("no route to host");
+        client.OnDecide = (id, command) => MarkDecided(id, ApiReviewState.Rejected, dto => dto.RejectionReason = command.Reason);
+
+        IRenderedComponent<MudDialogProvider> dialogs = Render<MudDialogProvider>();
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        Task rejecting = CardAt(page, 0).Find(".al-reject").ClickAsync(new MouseEventArgs());
+        dialogs.WaitForElement($"#{RejectDialog.ReasonId}").Input("not an action");
+        dialogs.Find($"#{RejectDialog.ConfirmId}").Click();
+        await rejecting;
+
+        snackbars.WaitForAssertion(() =>
+            Assert.Contains(Voice.UnexpectedFailureTitle, snackbars.Markup, StringComparison.Ordinal));
+
+        client.DecideThrows = null;
+        await snackbars.FindAll("button").First(IsRetry).ClickAsync(new MouseEventArgs());
+
+        Assert.Empty(dialogs.FindAll($"#{RejectDialog.ConfirmId}"));
+        Assert.Equal(["not an action", "not an action"], client.Decisions.Select(decision => decision.Command.Reason));
+
+        page.WaitForAssertion(() => Assert.Equal("Reason: not an action", CardAt(page, 0).Find(".al-rejection").TextContent));
+    }
+
+    [Fact]
+    public async Task A_failed_refresh_keeps_the_screen_and_its_retry_reads_again()
+    {
+        SignIn();
+        client.OnDecide = (id, _) =>
+        {
+            MarkDecided(id, ApiReviewState.Approved);
+            client.GetExtractionRunThrows = StubApiClient.Bare(500);
+        };
+
+        IRenderedComponent<MudSnackbarProvider> snackbars = Render<MudSnackbarProvider>();
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        await CardAt(page, 0).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        snackbars.WaitForAssertion(() =>
+            Assert.Contains(Voice.UnexpectedFailureTitle, snackbars.Markup, StringComparison.Ordinal));
+
+        // The screen as it was: no load-failure notice, both cards still there.
+        Assert.DoesNotContain(Voice.LoadFailurePrefix, page.Markup, StringComparison.Ordinal);
+        Assert.Equal(2, Cards(page).Length);
+        Assert.Equal(Voice.Pending, CardAt(page, 0).Find(".al-review-state").TextContent.Trim());
+
+        client.GetExtractionRunThrows = null;
+        await snackbars.FindAll("button").First(IsRetry).ClickAsync(new MouseEventArgs());
+
+        Assert.Single(client.Decisions);
+        page.WaitForAssertion(() => Assert.Equal(Voice.Approved, CardAt(page, 0).Find(".al-review-state").TextContent.Trim()));
+    }
+
+    [Fact]
+    public async Task The_highlight_survives_a_decision_on_another_card()
+    {
+        SignIn();
+        client.OnDecide = (id, _) => MarkDecided(id, ApiReviewState.Approved);
+
+        IRenderedComponent<ReviewPage> page = RenderReview();
+
+        Cards(page)[0].TriggerEvent("onmouseenter", new MouseEventArgs());
+        AssertHighlighted(page, "Dana will call Bob", activeIndex: 0);
+
+        await CardAt(page, 1).Find(".al-approve").ClickAsync(new MouseEventArgs());
+
+        page.WaitForAssertion(() => Assert.Equal(Voice.Approved, CardAt(page, 1).Find(".al-review-state").TextContent.Trim()));
+        AssertHighlighted(page, "Dana will call Bob", activeIndex: 0);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -682,6 +1084,64 @@ public sealed class ReviewPageTests : BunitContext
             new BrowserWindowSize { Width = width, Height = 900 },
             Breakpoint.Lg,
             isImmediate: false)));
+
+    private static readonly Guid Dana = Guid.Parse("01999999-0000-7000-8000-0000000000d1");
+
+    private static readonly Guid Priya = Guid.Parse("01999999-0000-7000-8000-0000000000d2");
+
+    private static PagedResultOfUserSummaryDto Roster() => new()
+    {
+        Items =
+        [
+            new UserSummaryDto { Id = Dana, DisplayName = "Dana Whitfield", Role = Role.ActionOfficer },
+            new UserSummaryDto { Id = Priya, DisplayName = "Priya Ramaswamy", Role = Role.Lead },
+        ],
+        Page = 1,
+        PageSize = 200,
+        Total = 2,
+    };
+
+    /// <summary>What the server holds after a decision, so the page's refresh reads it back.</summary>
+    private void MarkDecided(Guid id, ApiReviewState state, Action<ProposedActionDto>? more = null)
+    {
+        ProposedActionDto proposal = client.Run.Proposals.Single(candidate => candidate.Id == id);
+
+        proposal.ReviewState = state;
+        proposal.DecidedByUserId = Guid.Empty;
+        proposal.DecidedByDisplayName = "Dana Whitfield";
+        proposal.DecidedAt = new DateTimeOffset(2026, 9, 22, 10, 0, 0, TimeSpan.Zero);
+
+        if (state is not ApiReviewState.Rejected)
+        {
+            proposal.TrackedActionId = Guid.CreateVersion7();
+            proposal.DecidedDescription = proposal.Description;
+        }
+
+        more?.Invoke(proposal);
+    }
+
+    private static string Counter(IRenderedComponent<ReviewPage> page) => page.Find($"#{PendingCounter.CounterId}").TextContent;
+
+    /// <summary>One card, as a fragment scoped to its own article.</summary>
+    private static IRenderedComponent<ProposalCard> CardAt(IRenderedComponent<ReviewPage> page, int index) =>
+        page.FindComponents<ProposalCard>()[index];
+
+    private static bool IsRetry(IElement button) =>
+        string.Equals(button.TextContent.Trim(), Voice.Retry, StringComparison.Ordinal);
+
+    private static Task SetOwnerAsync(IRenderedComponent<ReviewPage> page, Guid? owner)
+    {
+        IRenderedComponent<MudSelect<Guid?>> select = page.FindComponent<MudSelect<Guid?>>();
+
+        return select.InvokeAsync(() => select.Instance.ValueChanged.InvokeAsync(owner));
+    }
+
+    private static Task SetDueAsync(IRenderedComponent<ReviewPage> page, DateTime? date)
+    {
+        IRenderedComponent<MudDatePicker> picker = page.FindComponent<MudDatePicker>();
+
+        return picker.InvokeAsync(() => picker.Instance.DateChanged.InvokeAsync(date));
+    }
 
     private BunitNavigationManager Navigation =>
         (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
