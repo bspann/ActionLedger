@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Order replacement signs for the six visitor spaces",
+      "suggestedOwner": "",
+      "suggestedDueDate": "2026-07-03",
+      "confidence": 0.84,
+      "sourceExcerpt": "Replacement signs for the six visitor spaces must be ordered by 2026-07-03."
+    },
+    {
+      "description": "Photograph the faded signs for the facilities record",
+      "suggestedOwner": "",
+      "suggestedDueDate": "2026-06-30",
+      "confidence": 0.79,
+      "sourceExcerpt": "The faded signs should be photographed for the facilities record by 2026-06-30."
+    }
+  ]
+}

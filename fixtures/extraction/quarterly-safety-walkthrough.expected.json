@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Replace the missing eyewash station sign",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": "2026-05-31",
+      "confidence": 0.86,
+      "sourceExcerpt": "Dana Whitfield will replace the missing eyewash station sign by the end of this month."
+    },
+    {
+      "description": "Re-test the two emergency exit lights",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-06-02",
+      "confidence": 0.83,
+      "sourceExcerpt": "Marcus Bell will re-test the two emergency exit lights within two weeks."
+    }
+  ]
+}

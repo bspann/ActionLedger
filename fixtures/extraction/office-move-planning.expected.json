@@ -1,0 +1,46 @@
+{
+  "actions": [
+    {
+      "description": "Collect floor plan preferences from every team",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": "2026-09-26",
+      "confidence": 0.94,
+      "sourceExcerpt": "Dana Whitfield will collect floor plan preferences from every team by 2026-09-26."
+    },
+    {
+      "description": "Label the storage cabinets in the records room",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": "2026-09-04",
+      "confidence": 0.92,
+      "sourceExcerpt": "Priya Ramaswamy will label the storage cabinets in the records room by 2026-09-04."
+    },
+    {
+      "description": "Confirm the freight elevator reservation with building services",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-09-08",
+      "confidence": 0.90,
+      "sourceExcerpt": "Marcus Bell will confirm the freight elevator reservation with building services by 2026-09-08."
+    },
+    {
+      "description": "Order two hundred packing boxes",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": "2026-09-02",
+      "confidence": 0.93,
+      "sourceExcerpt": "Dana Whitfield will order two hundred packing boxes by 2026-09-02."
+    },
+    {
+      "description": "Publish the desk assignment map on the shared drive",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": "2026-09-11",
+      "confidence": 0.89,
+      "sourceExcerpt": "Priya Ramaswamy will publish the desk assignment map on the shared drive by 2026-09-11."
+    },
+    {
+      "description": "Arrange the recycling pickup for the old filing cabinets",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-09-15",
+      "confidence": 0.88,
+      "sourceExcerpt": "Marcus Bell will arrange the recycling pickup for the old filing cabinets by 2026-09-15."
+    }
+  ]
+}

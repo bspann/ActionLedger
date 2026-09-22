@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Schedule the air conditioning service call",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-06-12",
+      "confidence": 0.93,
+      "sourceExcerpt": "Marcus Bell will schedule the air conditioning service call by 2026-06-12."
+    },
+    {
+      "description": "Log the weekend temperature readings in the facilities sheet",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": "2026-06-09",
+      "confidence": 0.89,
+      "sourceExcerpt": "Dana Whitfield will log the weekend temperature readings in the facilities sheet by 2026-06-09."
+    }
+  ]
+}

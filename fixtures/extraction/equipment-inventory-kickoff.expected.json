@@ -1,0 +1,11 @@
+{
+  "actions": [
+    {
+      "description": "Finish the equipment count for the annex",
+      "suggestedOwner": "P. Ram",
+      "suggestedDueDate": "2026-09-30",
+      "confidence": 0.55,
+      "sourceExcerpt": "P. Ram will finish the equipment count for the annex by the end of next month."
+    }
+  ]
+}
