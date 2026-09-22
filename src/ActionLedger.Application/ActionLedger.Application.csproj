@@ -14,4 +14,14 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
   </ItemGroup>
 
+  <!--
+    AD-11 — one copy of the extraction schema, read out of this assembly by the extractor above.
+    Embedding it means no path configuration, no copy step, and no chance of the api image and
+    the tests disagreeing about which document validated a run. System.Text.Json (including
+    JsonSchemaExporter) ships in the net10.0 shared framework, so this needs no package.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="Ai/extract-actions.schema.json" />
+  </ItemGroup>
+
 </Project>
