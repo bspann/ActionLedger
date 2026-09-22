@@ -3,6 +3,7 @@ using ActionLedger.Application.Extraction;
 using ActionLedger.Application.Meetings;
 using ActionLedger.Application.Review;
 using ActionLedger.Application.Users;
+using ActionLedger.Application.Webhooks;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace ActionLedger.Application;
@@ -37,6 +38,10 @@ public static class ApplicationRegistration
 
         // Story 3.2 — the decision use case. The only write that creates a Tracked Action.
         services.AddScoped<DecideProposalHandler>();
+
+        // Story 3.3 — the outbox payload builder. AppDbContext resolves it, so it takes the read
+        // seam per call rather than by injection (IReadDb depends on that same context).
+        services.AddScoped<IWebhookPayloadBuilder, WebhookPayloadBuilder>();
 
         return services;
     }
