@@ -18,3 +18,18 @@
 .al-progress--under-app-bar {
     top: var(--mud-appbar-height, 64px);
 }
+
+/*
+  UX-DR13 — the read-only notes block. ADR-002 stores the text byte-for-byte, so it renders
+  byte-for-byte: pre-wrap keeps every line break and run of spaces the user pasted while still
+  wrapping long lines to the container. Placement and whitespace only, which is why it is here
+  and not in tokens.css.
+*/
+.al-notes {
+    white-space: pre-wrap;
+
+    /* pre-wrap wraps at spaces only, and notes are pasted text: one long URL or file path with
+       no break opportunity in it would otherwise run past the container and scroll the page
+       sideways. */
+    overflow-wrap: break-word;
+}

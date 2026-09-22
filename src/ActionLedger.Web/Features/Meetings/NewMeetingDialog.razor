@@ -1,0 +1,257 @@
+@using ActionLedger.Web.Features.Meetings.Data
+
+@* UX-DR12 and EXPERIENCE.md's New meeting dialog: Title (required, max 200), Date (required,
+   MudDatePicker), Attendees as a MudChipSet chip input (1 to 100 characters each), validation
+   messages under each field, and "Create" opens Meeting Detail.
+
+   AD-14 — nothing here is a generated type. MeetingsService hands back a MeetingOutcome<Guid>
+   carrying either the new id or an ApiFailure, so this file never sees CreateMeetingCommand,
+   MeetingCreatedDto, or ApiException.
+
+   It is not a <Noun>Page and carries no @page: the list page owns the route and opens this
+   through IDialogService, which is what supplies the focus trap and the focus return. *@
+
+@inject MeetingsService Meetings
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField T="string"
+                      @bind-Value="title"
+                      Immediate="true"
+                      Label="@Voice.Title"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      id="@TitleId"
+                      Error="@(titleError is not null)"
+                      ErrorText="@titleError" />
+
+        @* Editable so the date can be typed as well as picked — the dialog is reachable by
+           keyboard alone, and a picker that only opens a calendar popup is not. *@
+        <MudDatePicker @bind-Date="date"
+                       Editable="true"
+                       Label="@Voice.Date"
+                       Variant="Variant.Outlined"
+                       Class="mb-4"
+                       DateFormat="yyyy-MM-dd"
+                       id="@DateId"
+                       Error="@(dateError is not null)"
+                       ErrorText="@dateError" />
+
+        @* The chip input is a text field plus a chip set rather than a component of its own:
+           Enter commits the trimmed draft, and AllClosable + OnClose removes a chip. *@
+        <MudTextField T="string"
+                      @bind-Value="attendeeDraft"
+                      Immediate="true"
+                      Label="@Voice.Attendees"
+                      Variant="Variant.Outlined"
+                      id="@AttendeeId"
+                      OnKeyDown="OnAttendeeKeyDown"
+                      Error="@(attendeeError is not null)"
+                      ErrorText="@attendeeError" />
+
+        @if (attendees.Count > 0)
+        {
+            <MudChipSet T="string" AllClosable="true" OnClose="RemoveAttendee" Class="mt-2">
+                @foreach (string attendee in attendees)
+                {
+                    <MudChip T="string" Text="@attendee" Value="@attendee" />
+                }
+            </MudChipSet>
+        }
+
+        @if (failure is not null)
+        {
+            @* EXPERIENCE.md's "Save failure" row asks for the problem title with the values
+               retained. Inside a modal the retry affordance already exists — the Create button,
+               over the values the user can still see — so the failure renders inline rather than
+               as a snackbar the focus trap could not reach. role="alert" is what makes it heard:
+               the dialog stays open and nothing takes focus. *@
+            <MudText Typo="Typo.body2"
+                     Color="Color.Error"
+                     Class="mt-4"
+                     id="@FailureId"
+                     role="alert">@failure.Title</MudText>
+        }
+    </DialogContent>
+    <DialogActions>
+        @* Disabled with Create. Cancelling mid-request dismisses the dialog while the POST is
+           still on its way, so the meeting is created and nothing navigates to it or shows it. *@
+        <MudButton id="@CancelId" Disabled="@inFlight" OnClick="Cancel">@Voice.Cancel</MudButton>
+        <MudButton id="@CreateId"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@inFlight"
+                   aria-describedby="@(failure is null ? null : FailureId)"
+                   OnClick="CreateAsync">@Voice.Create</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>Stable ids, so the tests and the labels reach the fields by name rather than by
+    /// MudBlazor's own markup.</summary>
+    public const string TitleId = "meeting-title";
+
+    public const string DateId = "meeting-date";
+
+    public const string AttendeeId = "meeting-attendee";
+
+    public const string CreateId = "new-meeting-create";
+
+    public const string CancelId = "new-meeting-cancel";
+
+    /// <summary>
+    /// The inline failure's id, and the Create button's <c>aria-describedby</c> target while a
+    /// failure is showing — the button is the retry affordance, so the reason belongs with it.
+    /// </summary>
+    public const string FailureId = "new-meeting-failure";
+
+    [CascadingParameter]
+    public IMudDialogInstance Dialog { get; set; } = default!;
+
+    private readonly List<string> attendees = [];
+
+    private string title = string.Empty;
+    private DateTime? date;
+    private string attendeeDraft = string.Empty;
+    private string? titleError;
+    private string? dateError;
+    private string? attendeeError;
+    private bool inFlight;
+    private ApiFailure? failure;
+
+    /// <summary>
+    /// Enter commits the draft. It is the only key handled; everything else is ordinary typing.
+    /// The keypress is deliberately not cancelled: <c>MudDialog</c> renders no <c>form</c>, so
+    /// there is no default submit to suppress, and the actions are ordinary buttons rather than
+    /// a submit control. A later story that wraps this content in a form has to add
+    /// <c>@@onkeydown:preventDefault</c> here, or Enter will both add the chip and submit.
+    /// </summary>
+    private void OnAttendeeKeyDown(KeyboardEventArgs args)
+    {
+        if (args.Key is "Enter")
+        {
+            AddAttendee();
+        }
+    }
+
+    private void AddAttendee()
+    {
+        string attendee = attendeeDraft.Trim();
+
+        if (attendee.Length == 0)
+        {
+            // Silent: an empty entry is nothing to refuse, and a message under an empty field
+            // would fire on every stray Enter.
+            attendeeError = null;
+            attendeeDraft = string.Empty;
+
+            return;
+        }
+
+        if (attendee.Length > MeetingsService.AttendeeMaxLength)
+        {
+            // Refused inline and not added as a chip, so the over-long value stays visible in the
+            // field where it can be corrected rather than disappearing into the set.
+            attendeeError = Voice.AttendeeTooLong;
+
+            return;
+        }
+
+        attendeeError = null;
+        attendees.Add(attendee);
+        attendeeDraft = string.Empty;
+    }
+
+    private void RemoveAttendee(MudChip<string> chip)
+    {
+        ArgumentNullException.ThrowIfNull(chip);
+
+        if (chip.Value is { } attendee)
+        {
+            attendees.Remove(attendee);
+        }
+    }
+
+    private async Task CreateAsync()
+    {
+        if (inFlight)
+        {
+            return;
+        }
+
+        // The draft is committed first, so a value typed but not yet entered is not silently
+        // dropped by pressing Create.
+        if (attendeeDraft.Trim().Length > 0)
+        {
+            AddAttendee();
+        }
+
+        if (!Validate())
+        {
+            // Client-side, before the call: nothing is sent while any field is invalid.
+            return;
+        }
+
+        // Claimed and rendered before the await, the way both pages do it. The event pipeline
+        // happens to render between the synchronous prefix and the await today, so this is
+        // belt-and-braces here — but it is the same three lines in all three writes, and the one
+        // that relies on the pipeline is the one that silently stops disabling if anything ever
+        // calls it from outside one.
+        inFlight = true;
+        failure = null;
+        StateHasChanged();
+
+        try
+        {
+            MeetingOutcome<Guid> outcome = await Meetings.CreateAsync(
+                title.Trim(),
+                DateOnly.FromDateTime(date!.Value),
+                attendees);
+
+            if (outcome.Failure is { } problem)
+            {
+                // The dialog stays open with every value retained. A 409 (duplicate title and
+                // date) also raises the global handler's own snackbar, which is left alone —
+                // re-implementing it here would say the same thing twice.
+                failure = problem;
+
+                return;
+            }
+
+            Dialog.Close(DialogResult.Ok(outcome.Value));
+        }
+        finally
+        {
+            inFlight = false;
+        }
+    }
+
+    /// <summary>
+    /// Every field, every time, so a form with two problems shows both rather than one at a time.
+    /// </summary>
+    private bool Validate()
+    {
+        string trimmed = title.Trim();
+
+        titleError = trimmed.Length switch
+        {
+            0 => Voice.TitleRequired,
+            > MeetingsService.TitleMaxLength => Voice.TitleTooLong,
+            _ => null,
+        };
+
+        dateError = date is null ? Voice.DateRequired : null;
+
+        // An over-long entry the user has since cleared is no longer a reason to refuse. Without
+        // this the message stays attached to an empty field and Create goes silent: the guard
+        // below keeps returning false and nothing on screen says why.
+        if (attendeeDraft.Trim().Length == 0)
+        {
+            attendeeError = null;
+        }
+
+        return titleError is null && dateError is null && attendeeError is null;
+    }
+
+    private void Cancel() => Dialog.Cancel();
+}
