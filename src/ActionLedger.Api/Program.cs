@@ -9,6 +9,7 @@ using ActionLedger.Api.Routing;
 using ActionLedger.Application;
 using ActionLedger.Application.Abstractions;
 using ActionLedger.Infrastructure;
+using ActionLedger.Infrastructure.Ai;
 using ActionLedger.Infrastructure.Persistence;
 using ActionLedger.Infrastructure.Seed;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -40,6 +41,17 @@ builder.Services.AddApiProblemDetails();
 // validated configuration. AD-17 — nothing here migrates: the schema arrives through the bundle.
 builder.Services.AddActionLedgerPersistence(services =>
     services.GetRequiredService<IOptions<DatabaseOptions>>().Value.ConnectionString);
+
+// AD-11, AD-16 — the AI ring takes validated values, never configuration, exactly as the seeder
+// does. Registered before AddActionLedgerSeeding because hosted services start in registration
+// order: a prompt version with no file or a provider with no factory fails the host here, before
+// any demo row is written.
+builder.Services.AddActionLedgerAi(services =>
+{
+    AiOptions ai = services.GetRequiredService<IOptions<AiOptions>>().Value;
+
+    return new AiSettings(ai.Provider, ai.PromptVersion, ai.CallTimeoutSeconds);
+});
 
 // AD-21 — the seeder is a hosted service in the api, gated on Seed:Enabled. Registered here,
 // before the outbox dispatcher the webhook epic adds, so it completes before the first poll.

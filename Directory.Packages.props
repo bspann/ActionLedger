@@ -80,6 +80,15 @@
     <PackageVersion Include="bunit" Version="2.11.3" />
   </ItemGroup>
 
+  <!--
+    The provider-neutral chat-client abstraction the AI seam is built on (AD-11, Story 2.4).
+    MIT, so NFR9 holds. The version is the spine's Stack table pin. The OpenAI SDK and
+    Microsoft.Extensions.AI.OpenAI are Story 2.7's: this story registers only the Fake provider.
+  -->
+  <ItemGroup Label="AI seam (Story 2.4)">
+    <PackageVersion Include="Microsoft.Extensions.AI" Version="10.10.0" />
+  </ItemGroup>
+
   <ItemGroup Label="Architecture rules">
     <PackageVersion Include="NetArchTest.eNhancedEdition" Version="1.4.5" />
   </ItemGroup>
