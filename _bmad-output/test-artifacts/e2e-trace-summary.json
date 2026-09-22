@@ -1,0 +1,187 @@
+{
+  "schema_version": "0.3.0",
+  "snapshot_at": "2026-09-21T18:13:21Z",
+  "repo": "ActionLedger",
+  "collection_mode": "contract_static",
+  "collection_status": "COLLECTED",
+  "inventory_basis": "acceptance_criteria",
+  "gate_basis": "deterministic_rules",
+  "source_sha": "b970415ce75039b709bfc25bdbec4be39a881ee5",
+  "target": {
+    "type": "story",
+    "id": "1-4-sign-in-and-receive-a-jwt-list-users",
+    "label": "Story 1.4 \u2014 Sign in and receive a JWT; list users"
+  },
+  "decision_mode": "deterministic",
+  "evaluator": "Murat (Master Test Architect)",
+  "confidence": "high",
+  "oracle": {
+    "resolution_mode": "formal_requirements",
+    "confidence": "high",
+    "sources": [
+      "_bmad-output/planning-artifacts/epics.md#story-14",
+      "_bmad-output/implementation-artifacts/spec-1-4-sign-in-and-receive-a-jwt-list-users.md",
+      "web/actionledger-web/openapi.json"
+    ],
+    "external_pointer_status": "not_used",
+    "synthetic": false
+  },
+  "gate_status": "PASS",
+  "coverage": {
+    "inventory": {
+      "covered": 6,
+      "total": 6,
+      "pct": 100
+    },
+    "fully_covered": 6,
+    "partially_covered": 0,
+    "uncovered": 0,
+    "priority_breakdown": {
+      "P0": {
+        "total": 5,
+        "covered": 5,
+        "percentage": 100
+      },
+      "P1": {
+        "total": 1,
+        "covered": 1,
+        "percentage": 100
+      },
+      "P2": {
+        "total": 0,
+        "covered": 0,
+        "percentage": 100
+      },
+      "P3": {
+        "total": 0,
+        "covered": 0,
+        "percentage": 100
+      }
+    },
+    "by_level": {
+      "e2e": {
+        "tests": 0,
+        "criteria_covered": 0
+      },
+      "api": {
+        "tests": 32,
+        "criteria_covered": 6
+      },
+      "component": {
+        "tests": 0,
+        "criteria_covered": 0
+      },
+      "unit": {
+        "tests": 18,
+        "criteria_covered": 4
+      },
+      "live": {
+        "tests": 0,
+        "criteria_covered": 0
+      },
+      "other": {
+        "tests": 1,
+        "criteria_covered": 1
+      }
+    }
+  },
+  "tests": {
+    "files": 8,
+    "cases": 51,
+    "skipped_cases": 0,
+    "fixme_cases": 0,
+    "pending_cases": 0
+  },
+  "risk_summary": {
+    "critical_open": 0,
+    "high_open": 0,
+    "medium_open": 1,
+    "low_open": 0
+  },
+  "heuristics": {
+    "endpoint_gaps": [],
+    "auth_negative_path_status": "complete",
+    "error_path_status": "complete",
+    "ui_journey_status": "not_applicable",
+    "ui_state_status": "not_applicable"
+  },
+  "live_evidence": {
+    "present": false,
+    "results_file": "_bmad-output/test-artifacts/live-verification-results.json",
+    "freshness": "not_applicable",
+    "recorded_source_sha": "",
+    "current_source_sha": "b970415ce75039b709bfc25bdbec4be39a881ee5",
+    "producer": "",
+    "counted": 0,
+    "stale": 0,
+    "unverifiable": 0,
+    "failed": 0,
+    "contradicted": 0,
+    "blocked": 0,
+    "skipped": 0,
+    "unmatched": 0,
+    "invalid": 0,
+    "requirements_live_only": 0
+  },
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p0_coverage_status": "PASS",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "p1_coverage_status": "PASS",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "100%",
+    "overall_coverage_status": "PASS"
+  },
+  "waivers": {
+    "register": "",
+    "read_error": "",
+    "filed": 0,
+    "valid": 0,
+    "invalid": 0,
+    "entries": []
+  },
+  "blockers": [],
+  "rejected_evidence": [],
+  "recommendations": [
+    {
+      "priority": "short_term",
+      "action": "Address DW-1: sign-in has no rate limiting, lockout, or audit log line on a refused credential.",
+      "requirements": [
+        "AC-2"
+      ]
+    },
+    {
+      "priority": "long_term",
+      "action": "When Epic 3 adds the first real Lead-only production route, extend AC-6 evidence from the test-assembly probe to that route.",
+      "requirements": [
+        "AC-6"
+      ]
+    }
+  ],
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability-matrix.md",
+    "trace_report_url": "",
+    "artifact_url": "",
+    "journey_evidence_url": ""
+  },
+  "resolved_blockers": [
+    {
+      "id": "GAP-1",
+      "severity": "critical",
+      "status": "closed_in_run",
+      "reason": "AC-4 clause 2 ('handlers never accept an actor id from a request body') had no test at any level.",
+      "resolution": "tests/Architecture.Tests/ActorIntegrityTests.cs added; two tests, both mutation-verified red, plus a false-positive check that a target-user member (OwnerUserId) still passes."
+    }
+  ],
+  "suite_state": {
+    "total": 119,
+    "passed": 119,
+    "failed": 0,
+    "skipped": 0,
+    "build_warnings": 0,
+    "pre_remediation_total": 117
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "schema_version": "0.1.0",
+  "snapshot_at": "2026-09-21T18:13:21Z",
+  "repo": "ActionLedger",
+  "target": {
+    "type": "story",
+    "id": "1-4-sign-in-and-receive-a-jwt-list-users",
+    "label": "Story 1.4 \u2014 Sign in and receive a JWT; list users"
+  },
+  "source_sha": "b970415ce75039b709bfc25bdbec4be39a881ee5",
+  "gate_status": "PASS",
+  "decision_mode": "deterministic",
+  "evaluator": "Murat (Master Test Architect)",
+  "rule_applied": "Rule 4 \u2014 P1 coverage >= 90% and overall >= 80% with P0 at 100% -> PASS",
+  "gate_criteria": {
+    "p0_coverage_required": "100%",
+    "p0_coverage_actual": "100%",
+    "p1_coverage_target": "90%",
+    "p1_coverage_minimum": "80%",
+    "p1_coverage_actual": "100%",
+    "overall_coverage_minimum": "80%",
+    "overall_coverage_actual": "100%"
+  },
+  "blockers": [],
+  "waived": false,
+  "links": {
+    "trace_report_path": "_bmad-output/test-artifacts/traceability-matrix.md"
+  },
+  "resolved_blockers": [
+    {
+      "id": "GAP-1",
+      "severity": "critical",
+      "status": "closed_in_run",
+      "resolution": "tests/Architecture.Tests/ActorIntegrityTests.cs (mutation-verified)"
+    }
+  ],
+  "prior_decision": {
+    "gate_status": "FAIL",
+    "rule_applied": "Rule 1 \u2014 P0 coverage must be 100% (FULL only); actual 80%",
+    "superseded_by": "GAP-1 closed in the same run"
+  }
+}
