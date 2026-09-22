@@ -49,6 +49,8 @@ public static class InfrastructureRegistration
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IMeetingRepository, MeetingRepository>();
+        services.AddScoped<IExtractionRunRepository, ExtractionRunRepository>();
+        services.AddScoped<IActionRevisionRepository, ActionRevisionRepository>();
         services.AddScoped<IReadDb, ReadDb>();
         services.AddScoped<SeedRepository>();
         services.AddScoped<DatabaseReadiness>();
@@ -124,6 +126,10 @@ public static class InfrastructureRegistration
 
         services.AddSingleton<IActionExtractor, ChatClientActionExtractor>();
         services.AddSingleton<IAiProviderInfo, AiProviderInfo>();
+
+        // AD-16 — the Application ring reads Ai:LowConfidenceThreshold only through this port.
+        // A singleton over the settings record: nothing here is per-request.
+        services.AddSingleton<IExtractionSettings, ExtractionSettings>();
 
         services.AddHostedService<AiStartupCheck>();
 

@@ -214,6 +214,8 @@ public sealed class MeetingsSuccessResponseTests
         Assert.Equal(2, items.Length);
         Assert.Equal("Newer standup", items[0].GetProperty("title").GetString());
         Assert.Equal("Older standup", items[1].GetProperty("title").GetString());
+        // Nothing has been run against either meeting, so the correlated count is the real 0.
+        // RunsEndpointTests is where a meeting that *has* runs reports them.
         Assert.Equal(0, items[0].GetProperty("runCount").GetInt32());
         Assert.Equal(0, items[0].GetProperty("trackedActionCount").GetInt32());
 

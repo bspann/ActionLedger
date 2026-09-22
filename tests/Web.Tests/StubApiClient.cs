@@ -9,8 +9,10 @@ namespace ActionLedger.Web.Tests;
 /// </summary>
 /// <remarks>
 /// Every operation records its call count and its arguments, so "called exactly once" and "called
-/// nothing else" are both assertable. The two health operations throw: nothing in the web app
-/// calls them, and a service that quietly grew one fails here rather than passing quietly.
+/// nothing else" are both assertable. The health operations and the two extraction-run operations
+/// throw: nothing in the web app calls them yet, and a service that quietly grew one fails here
+/// rather than passing quietly. Story 2.6 adds the UI that runs extraction and reads Run Detail,
+/// and that is the story that replaces these two throws with recorded calls.
 /// </remarks>
 internal sealed class StubApiClient : IActionLedgerApiClient
 {
@@ -85,6 +87,14 @@ internal sealed class StubApiClient : IActionLedgerApiClient
     public Task<HealthStatus> GetReadinessAsync() => throw NotExercised();
 
     public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
+
+    public Task<RunDto> StartExtractionRunAsync(Guid id) => throw NotExercisedYet();
+
+    public Task<RunDto> StartExtractionRunAsync(Guid id, CancellationToken cancellationToken) => throw NotExercisedYet();
+
+    public Task<RunDetailDto> GetExtractionRunAsync(Guid id) => throw NotExercisedYet();
+
+    public Task<RunDetailDto> GetExtractionRunAsync(Guid id, CancellationToken cancellationToken) => throw NotExercisedYet();
 
     internal int CreateMeetingCalls { get; private set; }
 
@@ -278,4 +288,7 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     private static NotSupportedException NotExercised() =>
         new("The web app calls neither health operation; a caller that grew one should fail here.");
+
+    private static NotSupportedException NotExercisedYet() =>
+        new("Story 2.6 adds the UI that starts a run and reads Run Detail; nothing calls these yet.");
 }

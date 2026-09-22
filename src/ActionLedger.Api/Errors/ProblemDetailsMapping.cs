@@ -145,10 +145,17 @@ public static class ProblemTypes
 }
 
 /// <summary>
-/// Turns the three exceptions that cross into the Api ring into their AD-13 status codes.
+/// Turns the four exceptions that cross into the Api ring into their AD-13 status codes.
 /// Anything else is left unhandled, so it becomes a 500 with no detail — an unrecognised
 /// exception must never describe itself to a caller.
 /// </summary>
+/// <remarks>
+/// The 400 arm is the one that has to be said out loud. Model binding answers a malformed body
+/// with its own 400 before a handler runs, so the only 400 that reaches here is a
+/// <see cref="ValidationFailedException"/> — a well-formed request that cannot proceed against the
+/// current state, such as running extraction on a Meeting with no notes (FR-4). Without the arm it
+/// would fall through to a 500.
+/// </remarks>
 internal sealed class ApiExceptionHandler(IProblemDetailsService problems) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(
@@ -159,6 +166,7 @@ internal sealed class ApiExceptionHandler(IProblemDetailsService problems) : IEx
         (int status, string? detail) = exception switch
         {
             NotFoundException notFound => (StatusCodes.Status404NotFound, notFound.Message),
+            ValidationFailedException validation => (StatusCodes.Status400BadRequest, validation.Message),
             DomainRuleException rule => (StatusCodes.Status409Conflict, rule.Message),
             ConcurrencyConflictException conflict => (StatusCodes.Status409Conflict, conflict.Message),
             _ => (0, null),

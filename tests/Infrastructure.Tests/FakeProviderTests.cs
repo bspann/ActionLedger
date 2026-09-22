@@ -29,7 +29,7 @@ public sealed class FakeProviderTests
 
     private static readonly FixtureCatalog Catalog = new();
 
-    private static readonly AiSettings Settings = new(FakeChatClientFactory.ProviderName, "v1", 90);
+    private static readonly AiSettings Settings = new(FakeChatClientFactory.ProviderName, "v1", 90, 0.70);
 
     // --- The catalog ---------------------------------------------------------------------------
 
