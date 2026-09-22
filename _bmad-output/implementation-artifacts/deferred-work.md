@@ -52,3 +52,27 @@ location: src/ActionLedger.Domain/Meetings/MeetingNotes.cs
 source_spec: `spec-2-1-meeting-and-immutable-notes-api.md`
 reason: `System.Text.Json` deserializes `"\u0000"` into a string containing NUL. `[StringLength(50_000, MinimumLength = 1)]` counts it as one character and `MeetingNotes.RequireText` guards length only, so nothing between the request body and `INSERT` refuses it — while `text` is `character varying(50000)`, and PostgreSQL text types reject NUL with SQLSTATE 22021. The intent says any 1–50,000-character text is accepted and stored byte-for-byte, which is not satisfiable for that one character, so the choice between refusing it with a 400 and transforming it is a product decision rather than a coding one. Not reproduced here: it needs a real database, and the existing round-trip tests cover ASCII whitespace and line endings only. What would settle it: a single `MeetingPersistenceTests` case attaching `"a\u0000b"` against the containerized PostgreSQL — if it throws, decide between a 400 and normalization; if it stores, the intent already holds and only the test is missing.
 status: open
+
+### DW-8: MeetingsService's DI registration in Program.cs is never executed by any test, so a registration that was removed or given the wrong lifetime would not fail the build.
+origin: spec-deferred 4849e7a099bf
+location: src/ActionLedger.Web/Program.cs:25
+source_spec: `spec-2-2-meeting-list-new-meeting-dialog-and-notes-paste-area.md`
+severity: low
+reason: Nothing in the suite runs `Program.cs`; every Web.Tests fixture registers the service into its own bUnit container instead. Not caused by this story: `AuthService` has carried the identical gap since Story 1.6, and `ApiClientRegistrationTests` covers `AddActionLedgerApiClient` only. Settling it means giving the composition root a shape a test can resolve against, which is a change to `Program.cs` and to how every feature registers itself rather than to this story's code.
+status: open
+
+### DW-9: The generated DateFormatConverter parses and writes meeting dates with the browser's culture, so a non-Gregorian calendar reads and sends the wrong year or fails outright.
+origin: spec-deferred f37743469584
+location: src/ActionLedger.Web/Core/Api/ActionLedgerApiClient.g.cs:1769 (consumed at src/ActionLedger.Web/Features/Meetings/Data/MeetingsService.cs:162,169)
+source_spec: `spec-2-2-meeting-list-new-meeting-dialog-and-notes-paste-area.md`
+severity: high
+reason: Verified by probe under CurrentCulture, against the real converter's two lines (DateTimeOffset.Parse(dateTime) and value.ToString("yyyy-MM-dd"), both without a format provider): th-TH the server's "2026-09-21" parses to 1483-09-21 and MeetingsService maps it to DateOnly(1483, 9, 21); an outbound 2026-10-03 is written as "2569-10-03". ar-SA DateTimeOffset.Parse("2026-09-21") throws FormatException: "String '2026-09-21' was not recognized as a valid DateTime." The FormatException is raised inside JSON deserialization, so it is not an ApiException, an HttpRequestException, or an OperationCanceledException — the three arms MeetingsService.CallAsync catches. It escapes the seam as an unhandled component exception and takes the Meeting List and Meeting Detail to the Blazor error UI. Not caused by this story: the converter is generated code from Story 2.1's contract and is off-limits here, and the app sets no culture policy at all (no DefaultThreadCurrentCulture anywhere in src/). The seam
+status: open
+
+### DW-10: The title link's @onclick:preventDefault cannot be observed by bUnit, so removing it degrades every title click to a full page reload with the suite still green.
+origin: spec-deferred 047e16aa7955
+location: src/ActionLedger.Web/Features/Meetings/MeetingListPage.razor:78
+source_spec: `spec-2-2-meeting-list-new-meeting-dialog-and-notes-paste-area.md`
+severity: medium
+reason: MeetingListPageTests.Clicking_the_title_link_navigates_exactly_once asserts Assert.Single(Navigation.History), which covers the handler and stopPropagation — remove either and the count goes to zero or two. Nothing is sensitive to preventDefault, because BunitNavigationManager never follows an anchor's default action. Delete the attribute and both link tests pass unchanged. In a browser the click falls through to the href as a document navigation, which reboots the WebAssembly runtime; the spec's own Design Notes record that SessionState holds the token in memory only, so that reload signs the user out. Only a real browser can observe a default action. tests/Web.E2E is still the wiring placeholder AD-18 reserves for Playwright — its single test asserts an assembly name — so this belongs with that suite rather than with this story.
+status: open

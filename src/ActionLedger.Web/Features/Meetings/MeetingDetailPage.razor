@@ -1,0 +1,301 @@
+@page "/meetings/{Id:guid}"
+@using ActionLedger.Web.Features.Meetings.Data
+
+@* FR-1 to FR-4 and UX-DR13 — Meeting Detail and the write-once notes paste area. This is
+   ADR-002 made visible: once notes exist the edit markup does not exist.
+
+   AD-14 — nothing here is a generated type. MeetingsService hands back MeetingDetail and
+   MeetingNotes, so this file never sees MeetingDetailDto or ApiException.
+
+   The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to. *@
+
+@inject MeetingsService Meetings
+@inject SessionState Session
+@inject NavigationManager Navigation
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+@* Nothing renders for an unauthenticated visitor, and nothing is requested either: the check
+   runs before the load. *@
+@if (Session.IsSignedIn)
+{
+    @if (notFound)
+    {
+        @* NotFoundNotice already defaults to /meetings and Voice.Meetings, so the 404 branch is
+           the component bare. It brings its own h1. *@
+        <NotFoundNotice />
+    }
+    else
+    {
+        @* Outside the load branches on purpose. FocusOnNavigate looks for an h1 once, after the
+           first render that follows the navigation — which happens while the GET is still in
+           flight, so an h1 that only exists once `detail` arrives is an h1 it never finds, and
+           focus is left on the row link being torn down. The failure branch has the same hole
+           permanently: LoadFailure brings no heading of its own. *@
+        <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@(detail?.Title ?? Voice.Meeting)</MudText>
+
+        @if (failure is not null)
+        {
+            <LoadFailure Title="@failure.Title" OnRetry="LoadAsync" />
+        }
+        else if (detail is not null)
+        {
+        @* Each caption names its value through aria-labelledby, so the value is announced as
+           "Date, 21 September 2026" rather than as four unrelated lines. *@
+        <MudText Typo="Typo.body2" Class="mud-text-secondary" id="@DateLabelId">@Voice.Date</MudText>
+        <MudText Typo="Typo.body1" id="@DateId" aria-labelledby="@DateLabelId" GutterBottom="true">@Formats.Date(detail.Date)</MudText>
+
+        <MudText Typo="Typo.body2" Class="mud-text-secondary" id="@AttendeesLabelId">@Voice.Attendees</MudText>
+        @if (detail.Attendees.Count == 0)
+        {
+            <MudText Typo="Typo.body1" id="@AttendeesId" aria-labelledby="@AttendeesLabelId" GutterBottom="true">@Voice.NoValue</MudText>
+        }
+        else
+        {
+            <MudChipSet T="string" ReadOnly="true" Class="mb-4" id="@AttendeesId" aria-labelledby="@AttendeesLabelId">
+                @foreach (string attendee in detail.Attendees)
+                {
+                    <MudChip T="string" Text="@attendee" Value="@attendee" />
+                }
+            </MudChipSet>
+        }
+
+        <MudText Typo="Typo.h5" HtmlTag="h2" Class="mt-6" GutterBottom="true">@Voice.Notes</MudText>
+
+        @* The branch is around the whole region rather than a ReadOnly flag on one field. A flag
+           is a condition a later story can invert by accident; a branch means the textarea, the
+           counter, and the Save control are not in the rendered tree at all — which is what
+           MeetingDetailPageTests asserts by searching the markup for "textarea". *@
+        @if (detail.Notes is { } saved)
+        {
+            <div class="al-notes" id="@NotesTextId">@saved.Text</div>
+
+            <MudText Typo="Typo.caption"
+                     id="@NotesCaptionId">@(Voice.NotesSavedPrefix + Formats.Instant(saved.SavedAt) + Voice.NotesSavedSuffix)</MudText>
+        }
+        else
+        {
+            <MudTextField T="string"
+                          @bind-Value="draft"
+                          Immediate="true"
+                          Lines="12"
+                          MaxLength="MeetingsService.NotesMaxLength"
+                          Label="@Voice.Notes"
+                          Variant="Variant.Outlined"
+                          id="@NotesFieldId"
+                          aria-describedby="@NotesDescribedBy" />
+
+            @* Both named by the field through aria-describedby, so the count and the one sentence
+               that makes this write irreversible are announced with the field rather than sitting
+               beside it as decoration a screen reader never reaches. *@
+            <MudText Typo="Typo.caption"
+                     id="@NotesCountId">@Formats.Count(draft.Length, MeetingsService.NotesMaxLength)</MudText>
+
+            <MudText Typo="Typo.caption" Class="d-block" id="@NotesImmutableId">@Voice.NotesImmutable</MudText>
+
+            <MudButton id="@SaveNotesId"
+                       Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       Class="mt-2"
+                       Disabled="@(draft.Trim().Length == 0 || saving)"
+                       OnClick="SaveNotesAsync">@Voice.SaveNotes</MudButton>
+        }
+        }
+    }
+}
+
+@code {
+    /// <summary>
+    /// Stable ids, prefixed so they cannot collide with the New meeting dialog's own Title and
+    /// Date fields. The two never share a route today; they would the day a later story opens a
+    /// dialog from here.
+    /// </summary>
+    public const string DateId = "meeting-detail-date";
+
+    public const string AttendeesId = "meeting-detail-attendees";
+
+    /// <summary>
+    /// The captions the two values above are named by. They are plain text rather than form
+    /// labels, so <c>aria-labelledby</c> is what ties each value to the word for it; without it a
+    /// screen reader reads four unrelated lines.
+    /// </summary>
+    public const string DateLabelId = "meeting-detail-date-label";
+
+    public const string AttendeesLabelId = "meeting-detail-attendees-label";
+
+    public const string NotesFieldId = "notes";
+
+    public const string NotesCountId = "notes-count";
+
+    public const string NotesImmutableId = "notes-immutable";
+
+    /// <summary>
+    /// What the textarea's <c>aria-describedby</c> points at: the live count and the
+    /// immutability sentence, in the order they are read.
+    /// </summary>
+    public const string NotesDescribedBy = NotesCountId + " " + NotesImmutableId;
+
+    public const string SaveNotesId = "save-notes";
+
+    public const string NotesTextId = "notes-text";
+
+    public const string NotesCaptionId = "notes-caption";
+
+    /// <summary>Where the login redirect sends an unauthenticated visitor.</summary>
+    private const string LoginRoute = "/login";
+
+    [Parameter]
+    public Guid Id { get; set; }
+
+    private MeetingDetail? detail;
+    private ApiFailure? failure;
+    private bool notFound;
+    private bool saving;
+    private string draft = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        // The route-level check runs before any request, so an expired session never spends a
+        // round trip on a 401 it already knows is coming.
+        if (!Session.IsSignedIn)
+        {
+            Session.CaptureAttemptedRoute(CurrentRoute());
+            Navigation.NavigateTo(LoginRoute);
+
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        failure = null;
+        notFound = false;
+
+        MeetingOutcome<MeetingDetail> outcome = await Meetings.GetAsync(Id);
+
+        if (outcome.Failure is { } problem)
+        {
+            // ApiFailure.StatusCode is 0 for a transport failure, which is how "not found" is
+            // told apart from "no response arrived".
+            if (problem.StatusCode is 404)
+            {
+                notFound = true;
+            }
+            else
+            {
+                failure = problem;
+            }
+
+            return;
+        }
+
+        detail = outcome.Value;
+    }
+
+    private async Task SaveNotesAsync()
+    {
+        // `detail.Notes` is the third guard, and it is the one the button cannot express: the
+        // snackbar raised by a failed save outlives the failure, so its Retry can still be
+        // clicked after a later attempt has already attached notes. Without this it opens a
+        // confirm dialog over a read-only region and sends a second PUT at a write the contract
+        // allows exactly once, which the server then refuses with a 409.
+        if (saving || draft.Trim().Length == 0 || detail?.Notes is not null)
+        {
+            return;
+        }
+
+        // Claimed before the dialog opens, not after it closes. HandleEventAsync renders after
+        // the handler's synchronous prefix and again on completion; with the flag set only after
+        // the confirm returns, both of those renders see it false, the button never draws
+        // disabled, and two quick clicks both clear the guard above — two stacked confirm dialogs
+        // and two PUTs at a write the contract allows exactly once.
+        //
+        // The explicit render is for the other caller: RetrySaveAsync comes in through
+        // InvokeAsync from the snackbar, which is not the event pipeline and renders nothing.
+        saving = true;
+        StateHasChanged();
+
+        try
+        {
+            // EXPERIENCE.md, Interaction Primitives — an irreversible write confirms in a dialog,
+            // and the dialog repeats the sentence the caption carries. One constant, both places.
+            IDialogReference dialog = await Dialogs.ShowAsync<ConfirmDialog>(
+                Voice.SaveNotes,
+                new DialogParameters<ConfirmDialog>
+                {
+                    { component => component.Message, Voice.NotesImmutable },
+                    { component => component.ConfirmLabel, Voice.SaveNotes },
+                });
+
+            DialogResult? result = await dialog.Result;
+
+            if (result is null or { Canceled: true } || result.Data is not true)
+            {
+                // Dismissed. No request is sent and the typed text is untouched; the finally
+                // below hands the button back.
+                return;
+            }
+
+            // The draft goes as typed. Trimming it here would make the stored record and its
+            // SHA-256 something the user never wrote (ADR-002).
+            MeetingOutcome<MeetingNotes> outcome = await Meetings.SaveNotesAsync(Id, draft);
+
+            if (outcome.Failure is { } problem)
+            {
+                if (problem.StatusCode is 409)
+                {
+                    // Notes are already attached — by another tab, or by a double submit the
+                    // disabled button did not catch. The global handler raises "Already changed.
+                    // Reloading."; performing the reload is this page's half of that sentence.
+                    await LoadAsync();
+
+                    return;
+                }
+
+                // EXPERIENCE.md's "Save failure or network error" row: a snackbar carrying the
+                // problem title with a Retry action, and the typed text retained.
+                Snackbar.Add(
+                    problem.Title,
+                    Severity.Error,
+                    options =>
+                    {
+                        options.Action = Voice.Retry;
+                        options.ActionColor = Color.Primary;
+                        options.OnClick = _ => RetrySaveAsync();
+                    });
+
+                return;
+            }
+
+            detail = detail! with { Notes = outcome.Value };
+
+            // The read-only branch takes the Save button with it in this same render, and that
+            // button is what MudBlazor returns focus to when the confirm dialog closes — so
+            // focus lands on nothing. The snackbar provider is already mounted in MainLayout,
+            // which makes it the one live region that reliably announces a region that has only
+            // just appeared.
+            Snackbar.Add(Voice.NotesSaved, Severity.Success);
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    /// <summary>
+    /// The snackbar's Retry. Its click arrives from <c>ISnackbar</c> rather than from a rendered
+    /// event handler, so it runs outside this component's event pipeline: without dispatching it
+    /// onto the renderer and rendering afterwards, a retry that succeeds sets
+    /// <see cref="detail"/> and repaints nothing — leaving the textarea and the Save button up
+    /// over notes that are already immutable.
+    /// </summary>
+    private Task RetrySaveAsync() => InvokeAsync(async () =>
+    {
+        await SaveNotesAsync();
+        StateHasChanged();
+    });
+
+    private string CurrentRoute() => "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+}

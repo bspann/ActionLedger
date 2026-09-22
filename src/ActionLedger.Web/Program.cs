@@ -1,6 +1,7 @@
 using ActionLedger.Web;
 using ActionLedger.Web.Core;
 using ActionLedger.Web.Features.Auth.Data;
+using ActionLedger.Web.Features.Meetings.Data;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using MudBlazor.Services;
@@ -21,5 +22,6 @@ builder.Services.AddActionLedgerApiClient(builder.Configuration, builder.HostEnv
 
 // Per-feature data services. Each one wraps the generated client; nothing above them sees HTTP.
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<MeetingsService>();
 
 await builder.Build().RunAsync();

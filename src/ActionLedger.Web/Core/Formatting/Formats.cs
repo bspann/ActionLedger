@@ -24,4 +24,19 @@ public static class Formats
     /// </summary>
     public static string Instant(DateTimeOffset value) =>
         value.ToUniversalTime().ToString("yyyy-MM-dd HH:mm 'UTC'", CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// A live count against a limit, as <c>1,234 / 50,000</c>. The notes paste area is its only
+    /// caller (EXPERIENCE.md, Notes paste area).
+    /// </summary>
+    /// <remarks>
+    /// It is here rather than inline in the page for the same reason the two date shapes are: a
+    /// WebAssembly host carries the browser's culture, and <c>N0</c> under de-DE renders the limit
+    /// as <c>50.000</c>. The group separator is decoration, but a limit that reads differently per
+    /// panelist is not.
+    /// </remarks>
+    public static string Count(int value, int limit) =>
+        value.ToString("N0", CultureInfo.InvariantCulture)
+        + " / "
+        + limit.ToString("N0", CultureInfo.InvariantCulture);
 }

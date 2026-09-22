@@ -1,7 +1,7 @@
-@* Story 1.6 fills the router the scaffold shipped. LoginPage is the only routable component in
-   the assembly; /meetings and /actions land on NotFound until Stories 2.2 and 4.3 add them,
-   which is the state the epic plans for — an honest Not found inside a working shell beats a
-   placeholder page that exists only to be deleted next story.
+@* Story 1.6 fills the router the scaffold shipped; Story 2.2 added the two Meetings routes, so
+   /meetings and /meetings/{id} are now real pages. /actions still lands on NotFound until Story
+   4.3 adds it, which is the state the epic plans for — an honest Not found inside a working
+   shell beats a placeholder page that exists only to be deleted next story.
 
    FocusOnNavigate moves focus to the first h1 on every navigation, so every routable component
    and the notice below has to render one. *@

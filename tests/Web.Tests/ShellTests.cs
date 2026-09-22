@@ -4,6 +4,7 @@ using ActionLedger.Web.Core.Auth;
 using ActionLedger.Web.Core.Shell;
 using ActionLedger.Web.Core.Users;
 using ActionLedger.Web.Features.Auth.Data;
+using ActionLedger.Web.Features.Meetings.Data;
 using ActionLedger.Web.Layout;
 using Bunit;
 using Bunit.TestDoubles;
@@ -43,8 +44,10 @@ public sealed class ShellTests : BunitContext
         Services.AddSingleton(loading);
         Services.AddSingleton<UserDirectory>();
 
-        // The router reaches LoginPage on a matched route, and LoginPage injects this.
+        // The router reaches LoginPage and MeetingListPage on a matched route, and each injects
+        // its own feature's data service.
         Services.AddSingleton<AuthService>();
+        Services.AddSingleton<MeetingsService>();
     }
 
     [Fact]
@@ -180,13 +183,12 @@ public sealed class ShellTests : BunitContext
 
     [Theory]
     [InlineData("/nope")]
-    [InlineData("/meetings")]
     [InlineData("/actions")]
     public void An_unmatched_route_renders_the_not_found_notice_inside_the_shell(string route)
     {
-        // /meetings and /actions are unmatched until Stories 2.2 and 4.3 land, which is the state
-        // the epic plans for: an honest Not found inside a working shell rather than a
-        // placeholder page that exists only to be deleted next story.
+        // /actions is unmatched until Story 4.3 lands, which is the state the epic plans for: an
+        // honest Not found inside a working shell rather than a placeholder page that exists only
+        // to be deleted next story. /meetings left this list when Story 2.2 gave it a real page.
         SignIn();
         Navigation.NavigateTo(route);
 
@@ -211,6 +213,38 @@ public sealed class ShellTests : BunitContext
         IRenderedComponent<App> app = Render<App>();
 
         Assert.Equal(Voice.ProductName, app.Find("h1").TextContent);
+    }
+
+    [Fact]
+    public void The_meetings_route_is_matched_rather_than_not_found()
+    {
+        // Story 2.2's half of the same check: /meetings is a real page now, reached through the
+        // router and rendered inside the shell rather than falling through to the notice.
+        SignIn();
+        Navigation.NavigateTo("/meetings");
+
+        IRenderedComponent<App> app = Render<App>();
+
+        Assert.Equal(Voice.Meetings, app.Find(".mud-container h1").TextContent);
+    }
+
+    [Fact]
+    public void The_meeting_detail_route_template_is_matched_and_binds_its_id()
+    {
+        // MeetingDetailPageTests hands Id in as a parameter and never goes through the router, so
+        // nothing else parses "/meetings/{Id:guid}". Rename or mistype that template and every
+        // navigation from the list lands on Not found with the whole suite still green.
+        SignIn();
+        client.Meeting.Title = "Office move follow-up";
+        Navigation.NavigateTo("/meetings/01999999-0000-7000-8000-00000000beef");
+
+        IRenderedComponent<App> app = Render<App>();
+
+        app.WaitForAssertion(() =>
+            Assert.Equal("Office move follow-up", app.Find(".mud-container h1").TextContent));
+        Assert.Equal(
+            Guid.Parse("01999999-0000-7000-8000-00000000beef"),
+            client.LastGetMeetingId);
     }
 
     [Theory]
@@ -288,6 +322,12 @@ public sealed class ShellTests : BunitContext
 
         Assert.Contains(".al-progress {", css, StringComparison.Ordinal);
         Assert.Contains(".al-progress--under-app-bar {", css, StringComparison.Ordinal);
+
+        // Meeting Detail's read-only notes block names the same kind of contract, and it carries
+        // the visible half of ADR-002: white-space: pre-wrap is what makes the stored text render
+        // as it was hashed. bUnit applies no stylesheet, so the page tests can only see the class
+        // attribute — delete the rule and every one of them stays green.
+        Assert.Contains(".al-notes {", css, StringComparison.Ordinal);
         Assert.Contains(
             "<link rel=\"stylesheet\" href=\"css/app.css\" />",
             WebProject.ReadAllText("wwwroot/index.html"),

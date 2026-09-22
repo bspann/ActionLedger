@@ -5,8 +5,8 @@
    parameter tag inside <Router>, which App.razor hands this component to.
 
    The h1 is what App.razor's <FocusOnNavigate Selector="h1" /> moves focus to on an unmatched
-   route. Until Stories 2.2 and 4.3 land, /meetings and /actions reach this component, so it is
-   the shell's only content for most of the demo build. *@
+   route. Story 2.2 also gives it a second caller: Meeting Detail renders it bare when the API
+   answers 404, which is what its /meetings + Voice.Meetings defaults are sized for. *@
 <MudText Typo="Typo.h4" HtmlTag="h1" GutterBottom="true">@Voice.NotFound</MudText>
 
 <MudLink Href="@ParentHref">@ParentLabel</MudLink>

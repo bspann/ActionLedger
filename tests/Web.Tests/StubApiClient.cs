@@ -10,9 +10,7 @@ namespace ActionLedger.Web.Tests;
 /// <remarks>
 /// Every operation records its call count and its arguments, so "called exactly once" and "called
 /// nothing else" are both assertable. The two health operations throw: nothing in the web app
-/// calls them, and a service that quietly grew one fails here rather than passing quietly. The
-/// four Meeting operations throw for the same reason — Story 2.1 publishes them in the contract
-/// and Story 2.2 is what gives the web app a screen that calls them.
+/// calls them, and a service that quietly grew one fails here rather than passing quietly.
 /// </remarks>
 internal sealed class StubApiClient : IActionLedgerApiClient
 {
@@ -88,24 +86,162 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
 
-    public Task<MeetingCreatedDto> CreateMeetingAsync(CreateMeetingCommand body) => throw NoMeetingScreenYet();
+    internal int CreateMeetingCalls { get; private set; }
 
-    public Task<MeetingCreatedDto> CreateMeetingAsync(CreateMeetingCommand body, CancellationToken cancellationToken) =>
-        throw NoMeetingScreenYet();
+    internal CreateMeetingCommand? LastCreateMeetingCommand { get; private set; }
 
-    public Task<PagedResultOfMeetingSummaryDto> ListMeetingsAsync(int? page, int? pageSize) => throw NoMeetingScreenYet();
+    /// <summary>Thrown from <c>CreateMeetingAsync</c> instead of returning, when set.</summary>
+    internal Exception? CreateMeetingThrows { get; set; }
 
-    public Task<PagedResultOfMeetingSummaryDto> ListMeetingsAsync(int? page, int? pageSize, CancellationToken cancellationToken) =>
-        throw NoMeetingScreenYet();
+    /// <summary>
+    /// Awaited by <c>CreateMeetingAsync</c> before it answers, so a test can hold the call open
+    /// and assert that the dialog's Create button cannot fire a second time.
+    /// </summary>
+    internal Task? CreateMeetingGate { get; set; }
 
-    public Task<MeetingNotesDto> SaveMeetingNotesAsync(Guid id, SaveMeetingNotesCommand body) => throw NoMeetingScreenYet();
+    internal MeetingCreatedDto MeetingCreated { get; set; } = new()
+    {
+        Id = Guid.Empty,
+        CreatedByUserId = Guid.Empty,
+    };
 
-    public Task<MeetingNotesDto> SaveMeetingNotesAsync(Guid id, SaveMeetingNotesCommand body, CancellationToken cancellationToken) =>
-        throw NoMeetingScreenYet();
+    internal int ListMeetingsCalls { get; private set; }
 
-    public Task<MeetingDetailDto> GetMeetingAsync(Guid id) => throw NoMeetingScreenYet();
+    internal int? LastMeetingsPage { get; private set; }
 
-    public Task<MeetingDetailDto> GetMeetingAsync(Guid id, CancellationToken cancellationToken) => throw NoMeetingScreenYet();
+    internal int? LastMeetingsPageSize { get; private set; }
+
+    /// <summary>Thrown from <c>ListMeetingsAsync</c> instead of returning, when set.</summary>
+    internal Exception? ListMeetingsThrows { get; set; }
+
+    /// <summary>
+    /// Awaited by <c>ListMeetingsAsync</c> before it answers, so a test can hold a load open.
+    /// Unlike the other gates it is awaited <em>with</em> the call's token, because the caller
+    /// this one exists for is <c>MudTable</c>, which cancels the outstanding request before
+    /// starting the next one. A gate that ignored the token could not produce that cancellation.
+    /// </summary>
+    internal Task? ListMeetingsGate { get; set; }
+
+    internal PagedResultOfMeetingSummaryDto MeetingPage { get; set; } = new()
+    {
+        Items = [],
+        Page = 1,
+        PageSize = 50,
+        Total = 0,
+    };
+
+    internal int GetMeetingCalls { get; private set; }
+
+    internal Guid LastGetMeetingId { get; private set; }
+
+    /// <summary>Thrown from <c>GetMeetingAsync</c> instead of returning, when set.</summary>
+    internal Exception? GetMeetingThrows { get; set; }
+
+    /// <summary>
+    /// Awaited by <c>GetMeetingAsync</c> before it answers, so a test can hold the load open and
+    /// observe what Meeting Detail renders while the request is still in flight — which is the
+    /// state <c>FocusOnNavigate</c> looks at.
+    /// </summary>
+    internal Task? GetMeetingGate { get; set; }
+
+    internal MeetingDetailDto Meeting { get; set; } = new()
+    {
+        Id = Guid.Empty,
+        Title = "Office move follow-up",
+        MeetingDate = new DateTimeOffset(2026, 9, 21, 0, 0, 0, TimeSpan.Zero),
+        Attendees = [],
+        CreatedByUserId = Guid.Empty,
+        CreatedAt = DateTimeOffset.UnixEpoch,
+        Notes = null,
+    };
+
+    internal int SaveMeetingNotesCalls { get; private set; }
+
+    internal Guid LastSaveMeetingNotesId { get; private set; }
+
+    internal SaveMeetingNotesCommand? LastSaveMeetingNotesCommand { get; private set; }
+
+    /// <summary>Thrown from <c>SaveMeetingNotesAsync</c> instead of returning, when set.</summary>
+    internal Exception? SaveMeetingNotesThrows { get; set; }
+
+    /// <summary>Awaited by <c>SaveMeetingNotesAsync</c> before it answers, so a test can hold it open.</summary>
+    internal Task? SaveMeetingNotesGate { get; set; }
+
+    internal MeetingNotesDto SavedNotes { get; set; } = new()
+    {
+        Id = Guid.Empty,
+        Text = "the notes",
+        Sha256 = new string('a', 64),
+        SavedAt = new DateTimeOffset(2026, 9, 21, 14, 3, 0, TimeSpan.Zero),
+    };
+
+    public Task<MeetingCreatedDto> CreateMeetingAsync(CreateMeetingCommand body) =>
+        CreateMeetingAsync(body, CancellationToken.None);
+
+    public async Task<MeetingCreatedDto> CreateMeetingAsync(CreateMeetingCommand body, CancellationToken cancellationToken)
+    {
+        CreateMeetingCalls++;
+        LastCreateMeetingCommand = body;
+
+        if (CreateMeetingGate is not null)
+        {
+            await CreateMeetingGate;
+        }
+
+        return CreateMeetingThrows is null ? MeetingCreated : throw CreateMeetingThrows;
+    }
+
+    public Task<PagedResultOfMeetingSummaryDto> ListMeetingsAsync(int? page, int? pageSize) =>
+        ListMeetingsAsync(page, pageSize, CancellationToken.None);
+
+    public async Task<PagedResultOfMeetingSummaryDto> ListMeetingsAsync(int? page, int? pageSize, CancellationToken cancellationToken)
+    {
+        ListMeetingsCalls++;
+        LastMeetingsPage = page;
+        LastMeetingsPageSize = pageSize;
+
+        if (ListMeetingsGate is not null)
+        {
+            // WaitAsync is what makes the token observable: it abandons the wait with a
+            // TaskCanceledException the moment the token fires, which is the shape the real
+            // client produces when a request is cancelled mid-flight.
+            await ListMeetingsGate.WaitAsync(cancellationToken);
+        }
+
+        return ListMeetingsThrows is null ? MeetingPage : throw ListMeetingsThrows;
+    }
+
+    public Task<MeetingNotesDto> SaveMeetingNotesAsync(Guid id, SaveMeetingNotesCommand body) =>
+        SaveMeetingNotesAsync(id, body, CancellationToken.None);
+
+    public async Task<MeetingNotesDto> SaveMeetingNotesAsync(Guid id, SaveMeetingNotesCommand body, CancellationToken cancellationToken)
+    {
+        SaveMeetingNotesCalls++;
+        LastSaveMeetingNotesId = id;
+        LastSaveMeetingNotesCommand = body;
+
+        if (SaveMeetingNotesGate is not null)
+        {
+            await SaveMeetingNotesGate;
+        }
+
+        return SaveMeetingNotesThrows is null ? SavedNotes : throw SaveMeetingNotesThrows;
+    }
+
+    public Task<MeetingDetailDto> GetMeetingAsync(Guid id) => GetMeetingAsync(id, CancellationToken.None);
+
+    public async Task<MeetingDetailDto> GetMeetingAsync(Guid id, CancellationToken cancellationToken)
+    {
+        GetMeetingCalls++;
+        LastGetMeetingId = id;
+
+        if (GetMeetingGate is not null)
+        {
+            await GetMeetingGate;
+        }
+
+        return GetMeetingThrows is null ? Meeting : throw GetMeetingThrows;
+    }
 
     /// <summary>The generated <c>ApiException</c> shape for a status the server answers with a problem body.</summary>
     internal static ApiException<ProblemDetails> Problem(int statusCode, string? title, string? detail = null) =>
@@ -142,7 +278,4 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     private static NotSupportedException NotExercised() =>
         new("The web app calls neither health operation; a caller that grew one should fail here.");
-
-    private static NotSupportedException NoMeetingScreenYet() =>
-        new("Story 2.1 publishes the Meeting operations; Story 2.2 is what makes the web app call them.");
 }
