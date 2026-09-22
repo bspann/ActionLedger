@@ -8,8 +8,8 @@ namespace ActionLedger.Web.Features.Review.Data;
 
 /// <summary>
 /// AD-14 — the Review feature's HTTP seam, built on the <c>MeetingsService</c> shape. Run Detail
-/// reads a run and starts another one through it; the Epic 3 Review Screen will join it. Nothing
-/// generated leaves this file.
+/// reads a run and starts another one through it, and the Review Screen reads a run with its
+/// Meeting. Nothing generated leaves this file.
 /// </summary>
 /// <remarks>
 /// It keeps its own <see cref="CallAsync{T}"/> and <see cref="ReviewOutcome{T}"/> rather than
@@ -48,10 +48,44 @@ public sealed class ReviewService(IActionLedgerApiClient client)
             cancellationToken);
 
     /// <summary>
-    /// Starts another run against the Meeting's notes and answers the new run's id, whatever its
-    /// outcome — Run Detail navigates to it either way. No timeout (spine :192).
+    /// The Review Screen: one run, with its proposals in AI order, and the Meeting whose notes it
+    /// read. A 404 from either GET is the outcome's 404.
     /// </summary>
-    public Task<ReviewOutcome<Guid>> StartRunAsync(
+    /// <remarks>
+    /// The Meeting is read by the route's id, not the run's: a run of another Meeting is answered
+    /// here anyway, carrying its own <see cref="ReviewScreen.MeetingId"/>, and the page refuses it.
+    /// The excerpt offsets are the server's (AD-15); nothing here locates an excerpt.
+    /// </remarks>
+    public Task<ReviewOutcome<ReviewScreen>> GetReviewAsync(
+        Guid meetingId,
+        Guid runId,
+        CancellationToken cancellationToken = default) =>
+        CallAsync(
+            async token =>
+            {
+                RunDetailDto run = await client.GetExtractionRunAsync(runId, token).ConfigureAwait(false);
+                MeetingDetailDto meeting = await client.GetMeetingAsync(meetingId, token).ConfigureAwait(false);
+
+                return new ReviewScreen(
+                    run.Id,
+                    run.MeetingId,
+                    meeting.Title,
+                    meeting.Notes?.Text ?? string.Empty,
+                    run.Provider,
+                    run.Model,
+                    run.PromptVersion,
+                    run.StartedAt,
+                    ToOutcome(run.Outcome),
+                    [.. run.Proposals.Select(ToReviewProposal)]);
+            },
+            cancellationToken);
+
+    /// <summary>
+    /// Starts another run against the Meeting's notes and answers the new run's id and outcome.
+    /// Run Detail opens the new run's detail either way; the Review Screen opens its review when it
+    /// succeeded. No timeout (spine :192).
+    /// </summary>
+    public Task<ReviewOutcome<RunStarted>> StartRunAsync(
         Guid meetingId,
         CancellationToken cancellationToken = default) =>
         CallAsync(
@@ -59,7 +93,7 @@ public sealed class ReviewService(IActionLedgerApiClient client)
             {
                 RunDto run = await client.StartExtractionRunAsync(meetingId, token).ConfigureAwait(false);
 
-                return run.Id;
+                return new RunStarted(run.Id, ToOutcome(run.Outcome));
             },
             cancellationToken);
 
@@ -86,10 +120,7 @@ public sealed class ReviewService(IActionLedgerApiClient client)
         }
     }
 
-    /// <summary>
-    /// The decision slots are <c>null</c> because the contract does not carry them yet:
-    /// <c>ProposedActionDto</c> defers them to Story 3.1, which changes only this mapping.
-    /// </summary>
+    /// <summary>The decision cells are the proposal's decision copy, with the decider's display name.</summary>
     private static RunProposal ToProposal(ProposedActionDto proposal) =>
         new(
             proposal.Id,
@@ -98,9 +129,40 @@ public sealed class ReviewService(IActionLedgerApiClient client)
             proposal.Confidence,
             proposal.IsLowConfidence,
             ToReviewState(proposal.ReviewState),
-            DecidedBy: null,
-            DecidedAt: null,
-            RejectionReason: null);
+            proposal.DecidedByDisplayName,
+            proposal.DecidedAt,
+            proposal.RejectionReason);
+
+    private static ReviewProposal ToReviewProposal(ProposedActionDto proposal) =>
+        new(
+            proposal.Id,
+            proposal.Ordinal,
+            proposal.Description,
+            proposal.SuggestedOwner,
+            proposal.SuggestedOwnerUserId,
+            proposal.SuggestedOwnerDisplayName,
+            ToDate(proposal.SuggestedDueDate),
+            proposal.Confidence,
+            proposal.IsLowConfidence,
+            proposal.SourceExcerpt,
+            ToReviewState(proposal.ReviewState),
+            proposal.DecidedByUserId,
+            proposal.DecidedByDisplayName,
+            proposal.DecidedAt,
+            proposal.RejectionReason,
+            proposal.TrackedActionId,
+            proposal.DecidedDescription,
+            proposal.DecidedOwnerUserId,
+            proposal.DecidedOwnerDisplayName,
+            ToDate(proposal.DecidedDueDate),
+            proposal.ExcerptStart is { } start && proposal.ExcerptLength is { } length ? new ExcerptRange(start, length) : null);
+
+    /// <summary>
+    /// The generator types a <c>format: date</c> as a <see cref="DateTimeOffset"/>; the calendar day
+    /// is what the server sent, so the time of day and offset are discarded.
+    /// </summary>
+    private static DateOnly? ToDate(DateTimeOffset? value) =>
+        value is { } date ? DateOnly.FromDateTime(date.Date) : null;
 
     private static RunOutcome ToOutcome(ExtractionOutcome outcome) =>
         outcome switch
@@ -149,9 +211,9 @@ public sealed record RunDetail(
 /// One Run Detail proposal row. <see cref="IsLowConfidence"/> is the server's flag, never a
 /// threshold compared here (AD-15).
 /// </summary>
-/// <param name="DecidedBy">The decider's display name. Always <c>null</c> until Story 3.1 publishes it.</param>
-/// <param name="DecidedAt">When the decision was made. Always <c>null</c> until Story 3.1.</param>
-/// <param name="RejectionReason">Why it was rejected. Always <c>null</c> until Story 3.1.</param>
+/// <param name="DecidedBy">The decider's display name, or <c>null</c> while Pending.</param>
+/// <param name="DecidedAt">When the decision was made, or <c>null</c> while Pending.</param>
+/// <param name="RejectionReason">Why it was rejected, or <c>null</c> — including a rejection that gave no reason.</param>
 public sealed record RunProposal(
     Guid Id,
     int Ordinal,
@@ -162,6 +224,67 @@ public sealed record RunProposal(
     string? DecidedBy,
     DateTimeOffset? DecidedAt,
     string? RejectionReason);
+
+/// <summary>A run that was just started: its id and whether it succeeded.</summary>
+public sealed record RunStarted(Guid Id, RunOutcome Outcome);
+
+/// <summary>
+/// AD-14 — the Review Screen: one run's metadata and proposals, with the Meeting it read, in
+/// web-owned types.
+/// </summary>
+/// <param name="MeetingId">The run's Meeting, which the route's meeting id must match.</param>
+/// <param name="MeetingTitle">The route Meeting's title, for the meta line's link.</param>
+/// <param name="Notes">The Meeting's notes, verbatim, or the empty string if it has none.</param>
+/// <param name="Proposals">The kept proposals, in AI order.</param>
+public sealed record ReviewScreen(
+    Guid RunId,
+    Guid MeetingId,
+    string MeetingTitle,
+    string Notes,
+    string Provider,
+    string Model,
+    string PromptVersion,
+    DateTimeOffset StartedAt,
+    RunOutcome Outcome,
+    IReadOnlyList<ReviewProposal> Proposals);
+
+/// <summary>
+/// One Review Screen proposal card. Every derived value — the flag, the owner match and its name,
+/// the excerpt range — is the server's (AD-15).
+/// </summary>
+/// <param name="SuggestedOwner">The owner as the notes named them, verbatim, or the empty string.</param>
+/// <param name="SuggestedOwnerDisplayName">The matched User's display name, or <c>null</c> when nobody matched.</param>
+/// <param name="DecidedByDisplayName">The decider's display name, or <c>null</c> while Pending.</param>
+/// <param name="TrackedActionId">The Tracked Action an approval or edit created, or <c>null</c>.</param>
+/// <param name="DecidedDescription">The Tracked Action's description, or <c>null</c>.</param>
+/// <param name="DecidedOwnerDisplayName">The Tracked Action's owner, or <c>null</c> for Unassigned or no Tracked Action.</param>
+/// <param name="DecidedDueDate">The Tracked Action's due date, or <c>null</c>.</param>
+/// <param name="Excerpt">Where the Source Excerpt sits in the notes, or <c>null</c> when the server did not find it.</param>
+public sealed record ReviewProposal(
+    Guid Id,
+    int Ordinal,
+    string Description,
+    string SuggestedOwner,
+    Guid? SuggestedOwnerUserId,
+    string? SuggestedOwnerDisplayName,
+    DateOnly? SuggestedDueDate,
+    double Confidence,
+    bool IsLowConfidence,
+    string SourceExcerpt,
+    ReviewState ReviewState,
+    Guid? DecidedByUserId,
+    string? DecidedByDisplayName,
+    DateTimeOffset? DecidedAt,
+    string? RejectionReason,
+    Guid? TrackedActionId,
+    string? DecidedDescription,
+    Guid? DecidedOwnerUserId,
+    string? DecidedOwnerDisplayName,
+    DateOnly? DecidedDueDate,
+    ExcerptRange? Excerpt);
+
+/// <summary>A range of UTF-16 code units in the notes, as the server located it.</summary>
+public sealed record ExcerptRange(int Start, int Length);
 
 /// <summary>
 /// AD-14 — what every <see cref="ReviewService"/> call returns, mirroring <c>MeetingOutcome</c>.

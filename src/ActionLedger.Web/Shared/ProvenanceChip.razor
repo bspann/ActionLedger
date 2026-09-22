@@ -1,0 +1,40 @@
+@* DESIGN.md, Provenance chip — two fixed variants. AI: auto_awesome and "Proposed by AI". Human:
+   person and "Decided by {display name}". Both carry an icon and text, so the meaning survives
+   without the purple or the blue. Static, not clickable: whether the decision was Approve, Edit or
+   Reject is the Review State chip's job, and the timestamp sits beside this chip, never inside it.
+
+   Presentational — parameters in, nothing out. *@
+<MudChip T="string"
+         Text="@Text"
+         Icon="@Icon"
+         Size="Size.Small"
+         Class="@CssClass" />
+
+@code {
+    /// <summary>The class every chip carries, beside its per-variant modifier.</summary>
+    public const string BaseClass = "al-provenance";
+
+    /// <summary>Which variant to render.</summary>
+    [Parameter]
+    [EditorRequired]
+    public Provenance Kind { get; set; }
+
+    /// <summary>The decider's display name. Read by the human variant only.</summary>
+    [Parameter]
+    public string? DecidedBy { get; set; }
+
+    private string Text => Kind switch
+    {
+        Provenance.Ai => Voice.ProposedByAi,
+        Provenance.Human => Voice.DecidedByPrefix + DecidedBy,
+        _ => throw new ArgumentOutOfRangeException(nameof(Kind), Kind, "A provenance with no chip."),
+    };
+
+    private string Icon => Kind is Provenance.Ai ? Icons.Material.Filled.AutoAwesome : Icons.Material.Filled.Person;
+
+    private string CssClass => $"{BaseClass} {ModifierFor(Kind)}";
+
+    /// <summary>The per-variant class app.css keys the color pair off.</summary>
+    public static string ModifierFor(Provenance kind) =>
+        BaseClass + "--" + kind.ToString().ToLowerInvariant();
+}

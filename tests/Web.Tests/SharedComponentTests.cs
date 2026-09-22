@@ -1,4 +1,5 @@
 using ActionLedger.Web.Core;
+using ActionLedger.Web.Core.Extraction;
 using ActionLedger.Web.Shared;
 using Bunit;
 using Microsoft.Extensions.DependencyInjection;
@@ -110,6 +111,111 @@ public sealed class SharedComponentTests : BunitContext
         DialogResult result = Assert.IsType<DialogResult>(await dialog.Result);
         Assert.True(result.Canceled);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // The Review Screen's brand-layer pieces (DESIGN.md, Components)
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_ai_provenance_chip_reads_proposed_by_ai_with_its_icon()
+    {
+        IRenderedComponent<ProvenanceChip> chip = Render<ProvenanceChip>(parameters => parameters
+            .Add(component => component.Kind, Provenance.Ai));
+
+        AngleSharp.Dom.IElement root = chip.Find(".mud-chip");
+
+        Assert.Equal(Voice.ProposedByAi, root.TextContent.Trim());
+        Assert.Contains(ProvenanceChip.ModifierFor(Provenance.Ai), root.ClassList);
+        Assert.NotEmpty(root.QuerySelectorAll("svg"));
+    }
+
+    [Fact]
+    public void The_human_provenance_chip_names_the_decider_and_nothing_else()
+    {
+        IRenderedComponent<ProvenanceChip> chip = Render<ProvenanceChip>(parameters => parameters
+            .Add(component => component.Kind, Provenance.Human)
+            .Add(component => component.DecidedBy, "Dana Whitfield"));
+
+        AngleSharp.Dom.IElement root = chip.Find(".mud-chip");
+
+        // The timestamp sits beside the chip, never inside it.
+        Assert.Equal("Decided by Dana Whitfield", root.TextContent.Trim());
+        Assert.Contains(ProvenanceChip.ModifierFor(Provenance.Human), root.ClassList);
+        Assert.NotEmpty(root.QuerySelectorAll("svg"));
+    }
+
+    [Fact]
+    public void Every_provenance_modifier_has_a_rule_in_app_css()
+    {
+        string css = WebProject.ReadAllText("wwwroot/css/app.css");
+
+        foreach (Provenance kind in Enum.GetValues<Provenance>())
+        {
+            Assert.Contains("." + ProvenanceChip.ModifierFor(kind), css, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void The_low_confidence_badge_is_an_icon_and_text()
+    {
+        IRenderedComponent<LowConfidenceBadge> badge = Render<LowConfidenceBadge>();
+
+        AngleSharp.Dom.IElement root = badge.Find($".{LowConfidenceBadge.BaseClass}");
+
+        // Never color alone.
+        Assert.Equal(Voice.LowConfidence, root.TextContent.Trim());
+        Assert.NotNull(root.QuerySelector("svg"));
+    }
+
+    [Fact]
+    public void The_low_confidence_badge_takes_a_placement_class()
+    {
+        IRenderedComponent<LowConfidenceBadge> badge = Render<LowConfidenceBadge>(parameters => parameters
+            .Add(component => component.Class, "ml-2"));
+
+        Assert.Contains("ml-2", badge.Find($".{LowConfidenceBadge.BaseClass}").ClassList);
+    }
+
+    [Theory]
+    [InlineData(6, "6 proposals pending")]
+    [InlineData(2, "2 proposals pending")]
+    [InlineData(1, "1 proposal pending")]
+    public void The_pending_counter_counts_what_is_left(int count, string expected)
+    {
+        IRenderedComponent<PendingCounter> counter = RenderCounter(count);
+
+        Assert.Equal(expected, counter.Find($"#{PendingCounter.CounterId}").TextContent);
+        Assert.Empty(counter.FindAll($"#{PendingCounter.ViewActionsId}"));
+    }
+
+    [Fact]
+    public void The_pending_counter_at_zero_links_to_this_meetings_actions()
+    {
+        Guid meetingId = Guid.CreateVersion7();
+
+        IRenderedComponent<PendingCounter> counter = RenderCounter(0, meetingId);
+
+        Assert.Equal(Voice.AllProposalsDecided, counter.Find($"#{PendingCounter.CounterId}").TextContent);
+
+        AngleSharp.Dom.IElement link = counter.Find($"#{PendingCounter.ViewActionsId}");
+        Assert.Equal(Voice.ViewActions, link.TextContent);
+        Assert.Equal($"/actions?meetingId={meetingId}", link.GetAttribute("href"));
+    }
+
+    [Fact]
+    public void The_pending_counter_sits_in_a_polite_live_region()
+    {
+        IRenderedComponent<PendingCounter> counter = RenderCounter(3);
+
+        AngleSharp.Dom.IElement text = counter.Find($"#{PendingCounter.CounterId}");
+
+        Assert.Equal("polite", text.Closest("[aria-live]")?.GetAttribute("aria-live"));
+    }
+
+    private IRenderedComponent<PendingCounter> RenderCounter(int count, Guid? meetingId = null) =>
+        Render<PendingCounter>(parameters => parameters
+            .Add(component => component.Count, count)
+            .Add(component => component.MeetingId, meetingId ?? Guid.CreateVersion7()));
 
     private async Task<IDialogReference> ShowAsync(IRenderedComponent<MudDialogProvider> provider)
     {
