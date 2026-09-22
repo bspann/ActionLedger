@@ -121,6 +121,9 @@ public sealed class VoiceAndFormatsTests
         { nameof(Voice.Approve), "Approve" },
         { nameof(Voice.Edit), "Edit" },
         { nameof(Voice.Reject), "Reject" },
+        { nameof(Voice.ApproveWithEdits), "Approve with edits" },
+        { nameof(Voice.RejectDialogTitle), "Reject this proposal?" },
+        { nameof(Voice.RejectReasonLabel), "Reason (optional)" },
     };
 
     [Theory]

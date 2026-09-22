@@ -6,11 +6,17 @@
    Presentational: parameters in, EventCallbacks out. The card is an <article tabindex="0"> so a
    decided card, which has no buttons, is still reached by the keyboard, and so focusing into it
    activates its highlight the way hovering does. Every derived value — the flag, the owner
-   match, the excerpt range — is the server's (AD-15). *@
+   match, the excerpt range — is the server's (AD-15).
+
+   Edit mode is the card's own view state, not data: the page never sees the draft until the
+   primary raises OnApprove with it. The page's @key keeps this instance, and so the draft,
+   across its re-renders, which is what keeps the values after a failed write. *@
 <article tabindex="0"
+         @ref="article"
          id="@ElementId(Proposal.Id)"
          class="al-proposal"
-         aria-labelledby="@DescriptionId(Proposal.Id)"
+         aria-labelledby="@(Editing ? null : DescriptionId(Proposal.Id))"
+         aria-label="@(Editing ? Proposal.Description : null)"
          aria-describedby="@DescribedBy"
          @onmouseenter="ActivateAsync"
          @onfocusin="ActivateAsync">
@@ -59,6 +65,55 @@
                     </div>
                     break;
 
+                case ReviewState.Pending when editing:
+                    @* EXPERIENCE.md, Proposal card, edit mode. The article is named by the proposed
+                       description meanwhile (aria-label above), since the paragraph is gone. *@
+                    <div class="al-proposal-edit">
+                        <MudTextField T="string"
+                                      @bind-Value="draftDescription"
+                                      Immediate="true"
+                                      Label="@Voice.Description"
+                                      Variant="Variant.Outlined"
+                                      MaxLength="@DescriptionMaxLength"
+                                      Class="al-edit-description"
+                                      Disabled="@WritesDisabled"
+                                      id="@EditDescriptionId(Proposal.Id)"
+                                      @ref="descriptionField" />
+
+                        <div class="al-proposal-edit-row">
+                            <div class="al-proposal-edit-owner">
+                                <MudSelect T="Guid?"
+                                           @bind-Value="draftOwner"
+                                           Label="@Voice.Owner"
+                                           Variant="Variant.Outlined"
+                                           ToStringFunc="OwnerName"
+                                           Class="al-edit-owner"
+                                           Disabled="@WritesDisabled"
+                                           id="@EditOwnerId(Proposal.Id)">
+                                    <MudSelectItem T="Guid?" Value="@((Guid?)null)">@Voice.Unassigned</MudSelectItem>
+                                    @foreach (DirectoryUser user in Owners)
+                                    {
+                                        <MudSelectItem T="Guid?" Value="@((Guid?)user.Id)">@user.DisplayName</MudSelectItem>
+                                    }
+                                </MudSelect>
+                                <span class="al-owner-hint">@OwnerHint</span>
+                            </div>
+
+                            @* Editable so a date can be typed as well as picked, which is what keeps
+                               it keyboard-reachable; Clearable is the mockup's clear button. *@
+                            <MudDatePicker @bind-Date="draftDueDate"
+                                           Label="@Voice.DueDate"
+                                           Variant="Variant.Outlined"
+                                           Clearable="true"
+                                           Editable="true"
+                                           DateFormat="yyyy-MM-dd"
+                                           Class="al-edit-due-date"
+                                           Disabled="@WritesDisabled"
+                                           id="@EditDueDateId(Proposal.Id)" />
+                        </div>
+                    </div>
+                    break;
+
                 default:
                     @* Pending and Rejected show what the AI proposed: nothing else was ever tracked. *@
                     <p class="al-proposal-description" id="@DescriptionId(Proposal.Id)">@Proposal.Description</p>
@@ -66,7 +121,7 @@
                         <dt>@Voice.Owner</dt>
                         <dd>
                             <span class="al-owner">@(Proposal.SuggestedOwnerDisplayName ?? Voice.Unassigned)</span>
-                            <span class="al-owner-hint">@(Voice.AiSuggestedPrefix + (string.IsNullOrEmpty(Proposal.SuggestedOwner) ? Voice.AiSuggestedNone : Proposal.SuggestedOwner))</span>
+                            <span class="al-owner-hint">@OwnerHint</span>
                         </dd>
                         <dt>@Voice.DueDate</dt>
                         <dd class="al-due-date">@(Proposal.SuggestedDueDate is { } due ? Formats.Date(due) : Voice.NoDueDateProposed)</dd>
@@ -101,12 +156,23 @@
                 }
             </div>
 
-            @if (Proposal.ReviewState is ReviewState.Pending)
+            @if (Editing)
             {
                 <div class="al-proposal-actions d-flex justify-end gap-2">
-                    <MudButton Class="al-reject" Variant="Variant.Text" Color="Color.Primary" OnClick="OnReject">@Voice.Reject</MudButton>
-                    <MudButton Class="al-edit" Variant="Variant.Outlined" Color="Color.Primary" OnClick="OnEdit">@Voice.Edit</MudButton>
-                    <MudButton Class="al-approve" Variant="Variant.Filled" Color="Color.Primary" OnClick="OnApprove">@Voice.Approve</MudButton>
+                    <MudButton Class="al-cancel" Variant="Variant.Text" Color="Color.Primary" Disabled="@WritesDisabled" OnClick="CancelEdit">@Voice.Cancel</MudButton>
+                    <MudButton Class="al-approve-edits"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(WritesDisabled || string.IsNullOrWhiteSpace(draftDescription))"
+                               OnClick="ApproveDraftAsync">@(DraftDiffers ? Voice.ApproveWithEdits : Voice.Approve)</MudButton>
+                </div>
+            }
+            else if (Proposal.ReviewState is ReviewState.Pending)
+            {
+                <div class="al-proposal-actions d-flex justify-end gap-2">
+                    <MudButton Class="al-reject" Variant="Variant.Text" Color="Color.Primary" Disabled="@WritesDisabled" OnClick="RejectAsync">@Voice.Reject</MudButton>
+                    <MudButton Class="al-edit" Variant="Variant.Outlined" Color="Color.Primary" Disabled="@WritesDisabled" OnClick="StartEdit">@Voice.Edit</MudButton>
+                    <MudButton Class="al-approve" Variant="Variant.Filled" Color="Color.Primary" Disabled="@WritesDisabled" OnClick="ApproveAsIsAsync">@Voice.Approve</MudButton>
                 </div>
             }
         </MudCardContent>
@@ -133,17 +199,162 @@
     [Parameter]
     public EventCallback OnActivate { get; set; }
 
-    /// <summary>A Pending card's Approve. Story 3.5 binds it.</summary>
+    /// <summary>The owner picker's roster, in the order given, after "Unassigned".</summary>
     [Parameter]
-    public EventCallback OnApprove { get; set; }
+    public IReadOnlyList<DirectoryUser> Owners { get; set; } = [];
 
-    /// <summary>A Pending card's Edit. Story 3.5 binds it.</summary>
+    /// <summary>Disables every button in the action row: a write is in flight, or this card's was refused.</summary>
     [Parameter]
-    public EventCallback OnEdit { get; set; }
+    public bool WritesDisabled { get; set; }
 
-    /// <summary>A Pending card's Reject. Story 3.5 binds it.</summary>
+    /// <summary>
+    /// A Pending card's Approve, with the values to send: the proposal's own from the plain
+    /// Approve, or the draft from edit mode's primary. The server decides Approved or Edited.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ProposalValues> OnApprove { get; set; }
+
+    /// <summary>A Pending card's Reject. The page opens the dialog.</summary>
     [Parameter]
     public EventCallback OnReject { get; set; }
+
+    /// <summary>The contract's cap on a description.</summary>
+    public const int DescriptionMaxLength = 500;
+
+    private ElementReference article;
+    private MudTextField<string>? descriptionField;
+
+    private bool editing;
+    private bool focusDescription;
+    private bool focusCard;
+
+    /// <summary>Set when this card raised a decision, so the decided re-render can take focus back.</summary>
+    private bool decisionRaised;
+
+    /// <summary><see cref="WritesDisabled"/> as the previous render had it.</summary>
+    private bool writesWereDisabled;
+
+    private string draftDescription = string.Empty;
+    private Guid? draftOwner;
+    private DateTime? draftDueDate;
+
+    /// <summary>A card that is no longer Pending never renders edit mode, whatever it was doing.</summary>
+    private bool Editing => editing && Proposal.ReviewState is ReviewState.Pending;
+
+    /// <summary>
+    /// The primary's label follows this. Each field is compared with what was proposed: the
+    /// description ordinally, the owner with the server's pre-selection, the date by day.
+    /// </summary>
+    private bool DraftDiffers =>
+        !string.Equals(draftDescription, Proposal.Description, StringComparison.Ordinal)
+        || draftOwner != Proposal.SuggestedOwnerUserId
+        || DraftDue != Proposal.SuggestedDueDate;
+
+    private DateOnly? DraftDue => draftDueDate is { } date ? DateOnly.FromDateTime(date) : null;
+
+    private string OwnerHint =>
+        Voice.AiSuggestedPrefix + (string.IsNullOrEmpty(Proposal.SuggestedOwner) ? Voice.AiSuggestedNone : Proposal.SuggestedOwner);
+
+    /// <summary>The card's edit-mode description field.</summary>
+    public static string EditDescriptionId(Guid proposalId) => $"proposal-{proposalId}-edit-description";
+
+    /// <summary>The card's edit-mode owner select.</summary>
+    public static string EditOwnerId(Guid proposalId) => $"proposal-{proposalId}-edit-owner";
+
+    /// <summary>The card's edit-mode due-date picker.</summary>
+    public static string EditDueDateId(Guid proposalId) => $"proposal-{proposalId}-edit-due-date";
+
+    protected override void OnParametersSet()
+    {
+        // The decided re-render takes the pressed button out of the tree. Focus goes to the card,
+        // which is still where it was, so a keyboard user carries on from the decision.
+        if (decisionRaised && Proposal.ReviewState is not ReviewState.Pending)
+        {
+            decisionRaised = false;
+            focusCard = true;
+        }
+
+        // Disabling the pressed button drops its focus to the body, and a dismissed Reject dialog
+        // or a failed write hands the buttons back with nothing focused. The card takes it again.
+        else if (decisionRaised && writesWereDisabled && !WritesDisabled)
+        {
+            decisionRaised = false;
+            focusCard = true;
+        }
+
+        writesWereDisabled = WritesDisabled;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Edit and Cancel each take the pressed button out of the tree, so focus is put
+        // somewhere deliberate rather than left to fall to the body.
+        if (focusDescription && descriptionField is not null)
+        {
+            focusDescription = false;
+            await descriptionField.FocusAsync();
+        }
+        else if (focusCard)
+        {
+            focusCard = false;
+            await article.FocusAsync();
+        }
+    }
+
+    private void StartEdit()
+    {
+        ResetDraft();
+        editing = true;
+        focusDescription = true;
+    }
+
+    /// <summary>Leaves edit mode with the proposed values back; the next Edit starts from them.</summary>
+    private void CancelEdit()
+    {
+        editing = false;
+        ResetDraft();
+        focusCard = true;
+    }
+
+    private void ResetDraft()
+    {
+        draftDescription = Proposal.Description;
+        draftOwner = Proposal.SuggestedOwnerUserId;
+        draftDueDate = Proposal.SuggestedDueDate?.ToDateTime(TimeOnly.MinValue);
+    }
+
+    /// <summary>The plain Approve sends the proposal's own values, unchanged, so the server records Approved.</summary>
+    private Task ApproveAsIsAsync()
+    {
+        decisionRaised = true;
+
+        return OnApprove.InvokeAsync(new ProposalValues(Proposal.Description, Proposal.SuggestedOwnerUserId, Proposal.SuggestedDueDate));
+    }
+
+    private Task ApproveDraftAsync()
+    {
+        decisionRaised = true;
+
+        return OnApprove.InvokeAsync(new ProposalValues(draftDescription, draftOwner, DraftDue));
+    }
+
+    private Task RejectAsync()
+    {
+        decisionRaised = true;
+
+        return OnReject.InvokeAsync();
+    }
+
+    /// <summary>
+    /// The select's text for a value. The pre-selected owner may be missing from a roster that
+    /// failed to load, so the server's display name for it is the fallback.
+    /// </summary>
+    private string OwnerName(Guid? ownerId) =>
+        ownerId is not { } id
+            ? Voice.Unassigned
+            : Owners.FirstOrDefault(user => user.Id == id)?.DisplayName
+              ?? (id == Proposal.SuggestedOwnerUserId ? Proposal.SuggestedOwnerDisplayName : null)
+              ?? string.Empty;
 
     /// <summary>The card's element id, so a test or a later story can reach one card by proposal.</summary>
     public static string ElementId(Guid proposalId) => $"proposal-{proposalId}";

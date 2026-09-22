@@ -1,0 +1,98 @@
+@* EXPERIENCE.md, Proposal card — "Reject opens a small dialog with an optional reason field and a
+   'Reject' confirm." ConfirmDialog's shape, with a reason field: the Review Screen opens it through
+   IDialogService, which gives it MudBlazor's focus trap and focus return.
+
+   Focus goes to the reason field as it opens, so a keyboard user types straight into it.
+
+   Presentational — nothing in, the reason out. It raises no request and does not trim the
+   reason; ReviewService owns what goes on the wire. *@
+@implements IDisposable
+
+<MudDialog>
+    <DialogContent>
+        <MudTextField T="string"
+                      @bind-Value="reason"
+                      Immediate="true"
+                      Label="@Voice.RejectReasonLabel"
+                      Variant="Variant.Outlined"
+                      Lines="3"
+                      MaxLength="@ReasonMaxLength"
+                      id="@ReasonId"
+                      @ref="reasonField" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton id="@CancelId" OnClick="Cancel">@Voice.Cancel</MudButton>
+        <MudButton id="@ConfirmId"
+                   Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   OnClick="Confirm">@Voice.Reject</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    /// <summary>The confirming button's id. Only one dialog is ever open (no modal stacks).</summary>
+    public const string ConfirmId = "reject-dialog-confirm";
+
+    /// <summary>The dismissing button's id.</summary>
+    public const string CancelId = "reject-dialog-cancel";
+
+    /// <summary>The reason field's id.</summary>
+    public const string ReasonId = "reject-dialog-reason";
+
+    /// <summary>The contract's cap on a rejection reason.</summary>
+    public const int ReasonMaxLength = 500;
+
+    [CascadingParameter]
+    public IMudDialogInstance Dialog { get; set; } = default!;
+
+    /// <summary>How long the reason field waits for the focus trap to settle before taking focus.</summary>
+    private const int FocusDelayMs = 150;
+
+    private string reason = string.Empty;
+    private MudTextField<string>? reasonField;
+
+    /// <summary>Set once the dialog is closing or gone, so the delayed focus does not run.</summary>
+    private bool closed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && reasonField is not null)
+        {
+            // MudDialog's focus trap settles on its own sentinel after the first render; a
+            // focus sent in the same turn is overwritten, so this one waits for the trap.
+            await Task.Delay(FocusDelayMs);
+
+            // Closed within the delay — Cancel, Confirm, or Escape, which disposes without
+            // either — leaves nothing to focus.
+            if (closed)
+            {
+                return;
+            }
+
+            try
+            {
+                await reasonField.FocusAsync();
+            }
+            catch (JSException)
+            {
+                // The element went between the check and the call. Focus is a nicety; an
+                // exception here would raise the error UI over a dialog that is already gone.
+            }
+        }
+    }
+
+    /// <summary>Closes with the reason as typed, which may be empty.</summary>
+    private void Confirm()
+    {
+        closed = true;
+        Dialog.Close(DialogResult.Ok(reason));
+    }
+
+    private void Cancel()
+    {
+        closed = true;
+        Dialog.Cancel();
+    }
+
+    public void Dispose() => closed = true;
+}

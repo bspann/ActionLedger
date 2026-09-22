@@ -1,11 +1,14 @@
 using ActionLedger.Web.Core;
 using ActionLedger.Web.Core.Extraction;
+using ActionLedger.Web.Core.Users;
 using ActionLedger.Web.Features.Review;
 using ActionLedger.Web.Features.Review.Data;
 using ActionLedger.Web.Shared;
 using AngleSharp.Dom;
 using Bunit;
 using Microsoft.AspNetCore.Components.Web;
+using MudBlazor;
+using MudBlazor.Extensions;
 using MudBlazor.Services;
 using Xunit;
 
@@ -120,21 +123,308 @@ public sealed class ProposalCardTests : BunitContext
     }
 
     [Fact]
-    public void The_three_verbs_raise_their_own_callbacks()
+    public void Plain_approve_sends_the_proposed_values_unchanged_and_reject_raises_its_callback()
     {
-        List<string> raised = [];
+        Guid owner = Guid.CreateVersion7();
+        ReviewProposal proposal = Pending() with
+        {
+            SuggestedOwner = "dana",
+            SuggestedOwnerUserId = owner,
+            SuggestedOwnerDisplayName = "Dana Whitfield",
+            SuggestedDueDate = new DateOnly(2026, 9, 18),
+        };
+
+        List<ProposalValues> approved = [];
+        int rejected = 0;
 
         IRenderedComponent<ProposalCard> card = Render<ProposalCard>(parameters => parameters
-            .Add(component => component.Proposal, Pending())
-            .Add(component => component.OnReject, () => raised.Add(Voice.Reject))
-            .Add(component => component.OnEdit, () => raised.Add(Voice.Edit))
-            .Add(component => component.OnApprove, () => raised.Add(Voice.Approve)));
+            .Add(component => component.Proposal, proposal)
+            .Add(component => component.OnApprove, values => approved.Add(values))
+            .Add(component => component.OnReject, () => rejected++));
 
         card.Find(".al-reject").Click();
-        card.Find(".al-edit").Click();
         card.Find(".al-approve").Click();
 
-        Assert.Equal([Voice.Reject, Voice.Edit, Voice.Approve], raised);
+        Assert.Equal(1, rejected);
+        Assert.Equal([new ProposalValues("Circulate the packing schedule.", owner, new DateOnly(2026, 9, 18))], approved);
+    }
+
+    [Fact]
+    public void Writes_disabled_disables_every_button_in_the_action_row_in_both_modes()
+    {
+        IRenderedComponent<ProposalCard> card = RenderEditable(Pending());
+
+        Assert.All(card.FindAll(".al-proposal-actions button"), button => Assert.False(button.HasAttribute("disabled")));
+
+        card.Render(parameters => parameters.Add(component => component.WritesDisabled, true));
+
+        Assert.Equal(3, card.FindAll(".al-proposal-actions button").Count);
+        Assert.All(card.FindAll(".al-proposal-actions button"), button => Assert.True(button.HasAttribute("disabled")));
+
+        card.Render(parameters => parameters.Add(component => component.WritesDisabled, false));
+        card.Find(".al-edit").Click();
+        card.Render(parameters => parameters.Add(component => component.WritesDisabled, true));
+
+        Assert.Equal(2, card.FindAll(".al-proposal-actions button").Count);
+        Assert.All(card.FindAll(".al-proposal-actions button"), button => Assert.True(button.HasAttribute("disabled")));
+
+        // The draft is locked too: values changed now would never be sent.
+        Assert.True(card.FindComponent<MudTextField<string>>().Instance.Disabled);
+        Assert.True(card.FindComponent<MudSelect<Guid?>>().Instance.Disabled);
+        Assert.True(card.FindComponent<MudDatePicker>().Instance.Disabled);
+        Assert.True(card.Find("input, textarea").HasAttribute("disabled"));
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Edit mode
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public void Edit_swaps_the_values_for_labelled_controls_pre_selected_from_the_proposal()
+    {
+        ReviewProposal proposal = Pending() with
+        {
+            SuggestedOwner = "P. Ram",
+            SuggestedOwnerUserId = Priya.Id,
+            SuggestedOwnerDisplayName = Priya.DisplayName,
+            SuggestedDueDate = new DateOnly(2026, 10, 10),
+        };
+
+        IRenderedComponent<ProposalCard> card = RenderEditable(proposal);
+
+        card.Find(".al-edit").Click();
+
+        // The description, as a field capped at the contract's 500.
+        IRenderedComponent<MudTextField<string>> description = card.FindComponent<MudTextField<string>>();
+        Assert.Equal(Voice.Description, description.Instance.Label);
+        Assert.Equal(500, description.Instance.MaxLength);
+        Assert.Equal("Circulate the packing schedule.", description.Instance.GetState(x => x.Value));
+        Assert.Equal(ProposalCard.EditDescriptionId(proposal.Id), card.Find("input, textarea").Id);
+
+        // The owner, pre-selected from the server's match, with the hint still under it.
+        IRenderedComponent<MudSelect<Guid?>> owner = card.FindComponent<MudSelect<Guid?>>();
+        Assert.Equal(Voice.Owner, owner.Instance.Label);
+        Assert.Equal(Priya.Id, owner.Instance.GetState(x => x.Value));
+        Assert.Equal("AI suggested: P. Ram", card.Find(".al-owner-hint").TextContent);
+
+        // Unassigned first, then the roster in the order given.
+        Assert.Equal(
+            [null, Dana.Id, Priya.Id],
+            card.FindComponents<MudSelectItem<Guid?>>().Select(item => item.Instance.GetState(x => x.Value)));
+
+        // The due date: clearable, typeable, yyyy-MM-dd.
+        IRenderedComponent<MudDatePicker> due = card.FindComponent<MudDatePicker>();
+        Assert.Equal(Voice.DueDate, due.Instance.Label);
+        Assert.True(due.Instance.Clearable);
+        Assert.True(due.Instance.Editable);
+        Assert.Equal("yyyy-MM-dd", due.Instance.GetState(x => x.DateFormat));
+        Assert.Equal(new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Unspecified), due.Instance.Date);
+
+        // Cancel and a primary that reads Approve while nothing differs.
+        IElement[] buttons = [.. card.FindAll(".al-proposal-actions button")];
+        Assert.Equal([Voice.Cancel, Voice.Approve], buttons.Select(button => button.TextContent.Trim()));
+        Assert.Contains("mud-button-text", buttons[0].ClassList);
+        Assert.Contains("mud-button-filled", buttons[1].ClassList);
+
+        // The article is still named by the proposal while its paragraph is a field.
+        IElement article = card.Find("article");
+        Assert.Null(article.GetAttribute("aria-labelledby"));
+        Assert.Equal("Circulate the packing schedule.", article.GetAttribute("aria-label"));
+    }
+
+    [Fact]
+    public void The_owner_select_shows_unassigned_for_null()
+    {
+        IRenderedComponent<ProposalCard> card = RenderEditable(Pending());
+
+        card.Find(".al-edit").Click();
+
+        IRenderedComponent<MudSelect<Guid?>> owner = card.FindComponent<MudSelect<Guid?>>();
+
+        Assert.Null(owner.Instance.GetState(x => x.Value));
+        Assert.Equal(Voice.Unassigned, owner.Instance.GetState(x => x.Text));
+    }
+
+    [Fact]
+    public void A_pre_selected_owner_missing_from_the_roster_shows_the_servers_display_name()
+    {
+        // A failed roster load leaves Owners empty; the pre-selection still reads as a name.
+        IRenderedComponent<ProposalCard> card = Render<ProposalCard>(parameters => parameters
+            .Add(component => component.Proposal, Pending() with
+            {
+                SuggestedOwnerUserId = Dana.Id,
+                SuggestedOwnerDisplayName = "Dana Whitfield",
+            })
+            .Add(component => component.Owners, []));
+        Render<MudPopoverProvider>();
+
+        card.Find(".al-edit").Click();
+
+        IRenderedComponent<MudSelect<Guid?>> owner = card.FindComponent<MudSelect<Guid?>>();
+
+        Assert.Equal(Dana.Id, owner.Instance.GetState(x => x.Value));
+        Assert.Equal("Dana Whitfield", owner.Instance.GetState(x => x.Text));
+    }
+
+    [Fact]
+    public async Task The_primary_reads_approve_with_edits_exactly_while_a_value_differs()
+    {
+        ReviewProposal proposal = Pending() with
+        {
+            SuggestedOwnerUserId = Dana.Id,
+            SuggestedOwnerDisplayName = Dana.DisplayName,
+            SuggestedDueDate = new DateOnly(2026, 10, 10),
+        };
+
+        IRenderedComponent<ProposalCard> card = RenderEditable(proposal);
+        card.Find(".al-edit").Click();
+
+        Assert.Equal(Voice.Approve, Primary(card).TextContent.Trim());
+
+        // The owner, away and back.
+        await SetOwnerAsync(card, Priya.Id);
+        Assert.Equal(Voice.ApproveWithEdits, Primary(card).TextContent.Trim());
+        await SetOwnerAsync(card, Dana.Id);
+        Assert.Equal(Voice.Approve, Primary(card).TextContent.Trim());
+
+        // The date, cleared and restored.
+        await SetDueAsync(card, null);
+        Assert.Equal(Voice.ApproveWithEdits, Primary(card).TextContent.Trim());
+        await SetDueAsync(card, new DateTime(2026, 10, 10, 0, 0, 0, DateTimeKind.Unspecified));
+        Assert.Equal(Voice.Approve, Primary(card).TextContent.Trim());
+
+        // The description, ordinally: a trailing space is a difference.
+        card.Find("input, textarea").Input("Circulate the packing schedule. ");
+        Assert.Equal(Voice.ApproveWithEdits, Primary(card).TextContent.Trim());
+        card.Find("input, textarea").Input("Circulate the packing schedule.");
+        Assert.Equal(Voice.Approve, Primary(card).TextContent.Trim());
+    }
+
+    [Fact]
+    public async Task The_primary_raises_on_approve_with_the_edited_values()
+    {
+        List<ProposalValues> approved = [];
+
+        ReviewProposal proposal = Pending() with
+        {
+            SuggestedOwnerUserId = Dana.Id,
+            SuggestedDueDate = new DateOnly(2026, 10, 10),
+        };
+
+        IRenderedComponent<ProposalCard> card = RenderEditable(proposal, values => approved.Add(values));
+        card.Find(".al-edit").Click();
+
+        card.Find("input, textarea").Input("Circulate the revised packing schedule.");
+        await SetOwnerAsync(card, Priya.Id);
+        await SetDueAsync(card, null);
+
+        Assert.Equal(Voice.ApproveWithEdits, Primary(card).TextContent.Trim());
+
+        Primary(card).Click();
+
+        Assert.Equal([new ProposalValues("Circulate the revised packing schedule.", Priya.Id, null)], approved);
+    }
+
+    [Fact]
+    public void The_unchanged_primary_sends_the_proposed_values()
+    {
+        List<ProposalValues> approved = [];
+
+        IRenderedComponent<ProposalCard> card = RenderEditable(
+            Pending() with { SuggestedOwnerUserId = Dana.Id, SuggestedDueDate = new DateOnly(2026, 10, 10) },
+            values => approved.Add(values));
+
+        card.Find(".al-edit").Click();
+        Primary(card).Click();
+
+        Assert.Equal([new ProposalValues("Circulate the packing schedule.", Dana.Id, new DateOnly(2026, 10, 10))], approved);
+    }
+
+    [Fact]
+    public void A_blank_description_disables_the_primary()
+    {
+        IRenderedComponent<ProposalCard> card = RenderEditable(Pending());
+        card.Find(".al-edit").Click();
+
+        card.Find("input, textarea").Input("   ");
+
+        Assert.True(Primary(card).HasAttribute("disabled"));
+
+        card.Find("input, textarea").Input("Something.");
+
+        Assert.False(Primary(card).HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public async Task Cancel_leaves_edit_mode_and_the_next_edit_starts_from_the_proposed_values()
+    {
+        ReviewProposal proposal = Pending() with { SuggestedOwnerUserId = Dana.Id, SuggestedOwnerDisplayName = Dana.DisplayName };
+
+        IRenderedComponent<ProposalCard> card = RenderEditable(proposal);
+        card.Find(".al-edit").Click();
+
+        card.Find("input, textarea").Input("Changed.");
+        await SetOwnerAsync(card, null);
+        await SetDueAsync(card, new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Unspecified));
+
+        card.Find(".al-cancel").Click();
+
+        // Read-only again, with the proposed values.
+        Assert.Empty(card.FindAll("input, textarea"));
+        Assert.Equal("Circulate the packing schedule.", card.Find(".al-proposal-description").TextContent);
+        Assert.Equal(Dana.DisplayName, card.Find(".al-owner").TextContent);
+        Assert.Equal([Voice.Reject, Voice.Edit, Voice.Approve], card.FindAll(".al-proposal-actions button").Select(button => button.TextContent.Trim()));
+
+        card.Find(".al-edit").Click();
+
+        Assert.Equal("Circulate the packing schedule.", card.FindComponent<MudTextField<string>>().Instance.GetState(x => x.Value));
+        Assert.Equal(Dana.Id, card.FindComponent<MudSelect<Guid?>>().Instance.GetState(x => x.Value));
+        Assert.Null(card.FindComponent<MudDatePicker>().Instance.Date);
+        Assert.Equal(Voice.Approve, Primary(card).TextContent.Trim());
+    }
+
+    [Fact]
+    public void Focus_returns_to_the_card_after_cancel_a_dismissed_reject_and_its_own_decision()
+    {
+        IRenderedComponent<ProposalCard> card = RenderEditable(Pending());
+
+        // Edit takes its own button out of the tree; the description field takes focus.
+        card.Find(".al-edit").Click();
+        JSInterop.VerifyFocusAsyncInvoke();
+
+        // So does Cancel; the card, still there, takes it.
+        card.Find(".al-cancel").Click();
+        JSInterop.VerifyFocusAsyncInvoke(calledTimes: 2);
+
+        // A Reject whose dialog was dismissed: the page disabled the buttons, which dropped focus,
+        // and hands them back. The card takes focus again.
+        card.Find(".al-reject").Click();
+        card.Render(parameters => parameters.Add(component => component.WritesDisabled, true));
+        card.Render(parameters => parameters.Add(component => component.WritesDisabled, false));
+        JSInterop.VerifyFocusAsyncInvoke(calledTimes: 3);
+
+        card.Find(".al-approve").Click();
+        card.Render(parameters => parameters.Add(
+            component => component.Proposal,
+            Decided(ReviewState.Approved) with { Id = card.Instance.Proposal.Id, DecidedDescription = "Circulate the packing schedule." }));
+
+        JSInterop.VerifyFocusAsyncInvoke(calledTimes: 4);
+    }
+
+    [Fact]
+    public void A_card_that_is_no_longer_pending_never_renders_edit_mode()
+    {
+        IRenderedComponent<ProposalCard> card = RenderEditable(Pending());
+        card.Find(".al-edit").Click();
+        Assert.NotEmpty(card.FindAll("input, textarea"));
+
+        card.Render(parameters => parameters.Add(
+            component => component.Proposal,
+            Decided(ReviewState.Approved) with { Id = card.Instance.Proposal.Id, DecidedDescription = "Circulate the packing schedule." }));
+
+        Assert.Empty(card.FindAll("input, textarea"));
+        Assert.Empty(card.FindAll(".al-proposal-actions"));
+        Assert.Equal("Circulate the packing schedule.", card.Find(".al-proposal-description").TextContent);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -317,6 +607,37 @@ public sealed class ProposalCardTests : BunitContext
             .Add(component => component.IsActive, isActive))
             .Find("article")
             .GetAttribute("aria-describedby");
+
+    private static readonly DirectoryUser Dana = new(Guid.Parse("01999999-0000-7000-8000-0000000000d1"), "Dana Whitfield", "Action Officer");
+
+    private static readonly DirectoryUser Priya = new(Guid.Parse("01999999-0000-7000-8000-0000000000d2"), "Priya Ramaswamy", "Lead");
+
+    /// <summary>A card with the roster and the popover provider MudSelect and MudDatePicker need.</summary>
+    private IRenderedComponent<ProposalCard> RenderEditable(ReviewProposal proposal, Action<ProposalValues>? onApprove = null)
+    {
+        Render<MudPopoverProvider>();
+
+        return Render<ProposalCard>(parameters => parameters
+            .Add(component => component.Proposal, proposal)
+            .Add(component => component.Owners, [Dana, Priya])
+            .Add(component => component.OnApprove, values => onApprove?.Invoke(values)));
+    }
+
+    private static IElement Primary(IRenderedComponent<ProposalCard> card) => card.Find(".al-approve-edits");
+
+    private static Task SetOwnerAsync(IRenderedComponent<ProposalCard> card, Guid? owner)
+    {
+        IRenderedComponent<MudSelect<Guid?>> select = card.FindComponent<MudSelect<Guid?>>();
+
+        return select.InvokeAsync(() => select.Instance.ValueChanged.InvokeAsync(owner));
+    }
+
+    private static Task SetDueAsync(IRenderedComponent<ProposalCard> card, DateTime? date)
+    {
+        IRenderedComponent<MudDatePicker> picker = card.FindComponent<MudDatePicker>();
+
+        return picker.InvokeAsync(() => picker.Instance.DateChanged.InvokeAsync(date));
+    }
 
     private IRenderedComponent<ProposalCard> RenderCard(ReviewProposal proposal) =>
         Render<ProposalCard>(parameters => parameters.Add(component => component.Proposal, proposal));

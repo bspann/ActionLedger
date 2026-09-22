@@ -321,6 +321,125 @@ public sealed class ReviewServiceTests
         await Assert.ThrowsAsync<TaskCanceledException>(() => service.GetRunAsync(RunId, source.Token));
     }
 
+    // ---------------------------------------------------------------------------------------
+    // Decisions
+    // ---------------------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Approve_sends_the_values_with_the_day_on_the_wire_and_no_reason()
+    {
+        Guid proposal = Guid.CreateVersion7();
+        Guid owner = Guid.CreateVersion7();
+
+        StubApiClient client = new() { DecidedState = ApiReviewState.Edited };
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewState> outcome = await service.ApproveAsync(
+            proposal,
+            new ProposalValues("Call Bob today.", owner, new DateOnly(2026, 10, 3)),
+            TestContext.Current.CancellationToken);
+
+        Assert.Null(outcome.Failure);
+        Assert.Equal(ReviewState.Edited, outcome.Value);
+
+        (Guid id, DecideProposalCommand command) = Assert.Single(client.Decisions);
+
+        Assert.Equal(proposal, id);
+        Assert.Equal(ReviewVerb.Approve, command.Decision);
+        Assert.Equal("Call Bob today.", command.Description);
+        Assert.Equal(owner, command.OwnerUserId);
+        Assert.Null(command.Reason);
+
+        // Midnight at offset zero, so the converter's yyyy-MM-dd is the day that was chosen.
+        Assert.Equal(new DateTimeOffset(2026, 10, 3, 0, 0, 0, TimeSpan.Zero), command.DueDate);
+        Assert.Equal(TimeSpan.Zero, command.DueDate!.Value.Offset);
+    }
+
+    [Fact]
+    public async Task Approve_with_no_owner_and_no_date_sends_nulls()
+    {
+        StubApiClient client = new();
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewState> outcome = await service.ApproveAsync(
+            Guid.CreateVersion7(),
+            new ProposalValues("Call Bob.", null, null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ReviewState.Approved, outcome.Value);
+
+        DecideProposalCommand command = Assert.Single(client.Decisions).Command;
+
+        Assert.Null(command.OwnerUserId);
+        Assert.Null(command.DueDate);
+    }
+
+    [Theory]
+    [InlineData("  dup  ", "dup")]
+    [InlineData("discussion item, not an action", "discussion item, not an action")]
+    [InlineData("   ", null)]
+    [InlineData("", null)]
+    [InlineData(null, null)]
+    public async Task Reject_sends_the_reason_trimmed_and_a_blank_one_as_null(string? typed, string? sent)
+    {
+        Guid proposal = Guid.CreateVersion7();
+
+        StubApiClient client = new() { DecidedState = ApiReviewState.Rejected };
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewState> outcome = await service.RejectAsync(proposal, typed, TestContext.Current.CancellationToken);
+
+        Assert.Equal(ReviewState.Rejected, outcome.Value);
+
+        (Guid id, DecideProposalCommand command) = Assert.Single(client.Decisions);
+
+        Assert.Equal(proposal, id);
+        Assert.Equal(ReviewVerb.Reject, command.Decision);
+        Assert.Equal(sent, command.Reason);
+        Assert.Null(command.Description);
+        Assert.Null(command.OwnerUserId);
+        Assert.Null(command.DueDate);
+    }
+
+    [Theory]
+    [InlineData(403)]
+    [InlineData(409)]
+    public async Task A_refused_decision_becomes_a_failure_with_its_status(int status)
+    {
+        StubApiClient client = new() { DecideThrows = StubApiClient.Problem(status, "Refused.") };
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewState> outcome = await service.RejectAsync(Guid.CreateVersion7(), null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(status, outcome.Failure?.StatusCode);
+        Assert.Equal("Refused.", outcome.Failure?.Title);
+    }
+
+    [Fact]
+    public async Task A_bare_500_or_a_transport_failure_on_approve_becomes_the_unexpected_failure()
+    {
+        StubApiClient client = new() { DecideThrows = StubApiClient.Bare(500) };
+        ReviewService service = new(client);
+
+        ReviewOutcome<ReviewState> outcome = await service.ApproveAsync(
+            Guid.CreateVersion7(),
+            new ProposalValues("Call Bob.", null, null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(500, outcome.Failure?.StatusCode);
+        Assert.Equal(Voice.UnexpectedFailureTitle, outcome.Failure?.Title);
+
+        client.DecideThrows = new HttpRequestException("no route to host");
+
+        outcome = await service.ApproveAsync(
+            Guid.CreateVersion7(),
+            new ProposalValues("Call Bob.", null, null),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, outcome.Failure?.StatusCode);
+        Assert.Equal(Voice.UnexpectedFailureTitle, outcome.Failure?.Title);
+    }
+
     private static ProposedActionDto Proposal(
         int ordinal,
         string description,
