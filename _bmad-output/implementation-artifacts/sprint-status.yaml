@@ -46,7 +46,7 @@ development_status:
   epic-1-retrospective: optional
 
   epic-2: backlog
-  2-1-meeting-and-immutable-notes-api: backlog
+  2-1-meeting-and-immutable-notes-api: done
   2-2-meeting-list-new-meeting-dialog-and-notes-paste-area: backlog
   2-3-fixture-catalog-and-prompt-v1-saturday-evening: backlog
   2-4-extraction-seam-output-validation-and-the-fake-provider: backlog

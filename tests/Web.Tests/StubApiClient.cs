@@ -10,7 +10,9 @@ namespace ActionLedger.Web.Tests;
 /// <remarks>
 /// Every operation records its call count and its arguments, so "called exactly once" and "called
 /// nothing else" are both assertable. The two health operations throw: nothing in the web app
-/// calls them, and a service that quietly grew one fails here rather than passing quietly.
+/// calls them, and a service that quietly grew one fails here rather than passing quietly. The
+/// four Meeting operations throw for the same reason — Story 2.1 publishes them in the contract
+/// and Story 2.2 is what gives the web app a screen that calls them.
 /// </remarks>
 internal sealed class StubApiClient : IActionLedgerApiClient
 {
@@ -86,6 +88,25 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     public Task<HealthStatus> GetReadinessAsync(CancellationToken cancellationToken) => throw NotExercised();
 
+    public Task<MeetingCreatedDto> CreateMeetingAsync(CreateMeetingCommand body) => throw NoMeetingScreenYet();
+
+    public Task<MeetingCreatedDto> CreateMeetingAsync(CreateMeetingCommand body, CancellationToken cancellationToken) =>
+        throw NoMeetingScreenYet();
+
+    public Task<PagedResultOfMeetingSummaryDto> ListMeetingsAsync(int? page, int? pageSize) => throw NoMeetingScreenYet();
+
+    public Task<PagedResultOfMeetingSummaryDto> ListMeetingsAsync(int? page, int? pageSize, CancellationToken cancellationToken) =>
+        throw NoMeetingScreenYet();
+
+    public Task<MeetingNotesDto> SaveMeetingNotesAsync(Guid id, SaveMeetingNotesCommand body) => throw NoMeetingScreenYet();
+
+    public Task<MeetingNotesDto> SaveMeetingNotesAsync(Guid id, SaveMeetingNotesCommand body, CancellationToken cancellationToken) =>
+        throw NoMeetingScreenYet();
+
+    public Task<MeetingDetailDto> GetMeetingAsync(Guid id) => throw NoMeetingScreenYet();
+
+    public Task<MeetingDetailDto> GetMeetingAsync(Guid id, CancellationToken cancellationToken) => throw NoMeetingScreenYet();
+
     /// <summary>The generated <c>ApiException</c> shape for a status the server answers with a problem body.</summary>
     internal static ApiException<ProblemDetails> Problem(int statusCode, string? title, string? detail = null) =>
         new(
@@ -121,4 +142,7 @@ internal sealed class StubApiClient : IActionLedgerApiClient
 
     private static NotSupportedException NotExercised() =>
         new("The web app calls neither health operation; a caller that grew one should fail here.");
+
+    private static NotSupportedException NoMeetingScreenYet() =>
+        new("Story 2.1 publishes the Meeting operations; Story 2.2 is what makes the web app call them.");
 }

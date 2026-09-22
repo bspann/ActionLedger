@@ -1,5 +1,7 @@
+using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Nodes;
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Application.Meetings;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
@@ -30,6 +32,8 @@ public static class OpenApiSetup
         {
             options.AddDocumentTransformer(DescribeContractAsync);
             options.AddSchemaTransformer(DescribeEnumsAsStringsAsync);
+            options.AddSchemaTransformer(DescribeCollectionElementBoundsAsync);
+            options.AddSchemaTransformer(DescribeRequiredMembersAsNonNullableAsync);
             options.AddOperationTransformer(RequireBearerWhereAuthorizedAsync);
             options.AddOperationTransformer(ReusePagingVocabularyAsync);
         });
@@ -218,6 +222,74 @@ public static class OpenApiSetup
 
         schema.Type = JsonSchemaType.String;
         schema.Enum = [.. Enum.GetNames(type).Select(name => (JsonNode)JsonValue.Create(name)!)];
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Publishes the per-element length rule a collection property's validation attribute
+    /// enforces, on the <c>items</c> schema of that collection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The generator reads <c>[Required]</c>, <c>[StringLength]</c>, and <c>[Range]</c> off a
+    /// property and stamps them on that property's own schema — which is why <c>title</c> and the
+    /// notes <c>text</c> both publish their bounds. <c>[StringLength]</c> cannot express a
+    /// per-element rule at all (its <c>IsValid</c> casts to <c>string</c> and throws on an array),
+    /// so the rule lives in <see cref="AttendeeNamesAttribute"/> instead and nothing published it:
+    /// <c>attendees</c> went out as a bare array of strings, leaving the generated client and any
+    /// integrator to discover the limit from a 400.
+    /// </para>
+    /// <para>
+    /// This keys on <see cref="AttendeeNamesAttribute"/> specifically, so it publishes exactly the
+    /// one collection that has such a rule today. A second bounded collection needs either its own
+    /// case here or a shared base attribute to match on — this is not yet general.
+    /// </para>
+    /// </remarks>
+    private static Task DescribeCollectionElementBoundsAsync(
+        OpenApiSchema schema,
+        OpenApiSchemaTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        AttendeeNamesAttribute? bounds = context.JsonPropertyInfo?.AttributeProvider?
+            .GetCustomAttributes(typeof(AttendeeNamesAttribute), inherit: true)
+            .OfType<AttendeeNamesAttribute>()
+            .FirstOrDefault();
+
+        if (bounds is not null && schema.Items is OpenApiSchema items)
+        {
+            items.MinLength = bounds.MinimumLength;
+            items.MaxLength = bounds.MaximumLength;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Drops <c>null</c> from the published type of a member the server marks <c>[Required]</c>.
+    /// </summary>
+    /// <remarks>
+    /// The generator derives a member's schema type from its CLR type, so a nullable value type
+    /// publishes as <c>["null", <em>t</em>]</c> even when <c>[Required]</c> refuses null. That is
+    /// how <c>CreateMeetingCommand.MeetingDate</c> came out: <c>DateOnly?</c> so that an omitted
+    /// date is a 400 rather than <c>0001-01-01</c>, and therefore published as nullable while
+    /// sitting in the schema's <c>required</c> list. A client that took the contract at its word
+    /// and sent <c>"meetingDate": null</c> was answered with a 400 the schema did not predict.
+    /// Removing the null bit leaves the published type saying what the server actually accepts.
+    /// </remarks>
+    private static Task DescribeRequiredMembersAsNonNullableAsync(
+        OpenApiSchema schema,
+        OpenApiSchemaTransformerContext context,
+        CancellationToken cancellationToken)
+    {
+        bool required = context.JsonPropertyInfo?.AttributeProvider?
+            .GetCustomAttributes(typeof(RequiredAttribute), inherit: true)
+            .Length > 0;
+
+        if (required && schema.Type is { } type && type.HasFlag(JsonSchemaType.Null))
+        {
+            schema.Type = type & ~JsonSchemaType.Null;
+        }
 
         return Task.CompletedTask;
     }

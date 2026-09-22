@@ -60,6 +60,13 @@ public class TestApi : WebApplicationFactory<Program>
     public bool IncludeTestEndpoints { get; init; }
 
     /// <summary>
+    /// Replaces registrations after the host has built its own, for the few assertions that need
+    /// the real HTTP pipeline but not a real database — a 201 and the <c>Location</c> it points at,
+    /// for instance. Substitute the persistence ports only; anything above them is the subject.
+    /// </summary>
+    public Action<IServiceCollection>? ReplaceServices { get; init; }
+
+    /// <summary>
     /// Mints a token the host will accept: same key, same issuer, wire claim names per AD-12.
     /// Story 1.4 adds the endpoint that issues these; the scheme that accepts them is this story's.
     /// </summary>
@@ -124,6 +131,11 @@ public class TestApi : WebApplicationFactory<Program>
         {
             builder.ConfigureTestServices(services =>
                 services.AddControllers().AddApplicationPart(typeof(TestApi).Assembly));
+        }
+
+        if (ReplaceServices is { } replace)
+        {
+            builder.ConfigureTestServices(replace);
         }
     }
 }

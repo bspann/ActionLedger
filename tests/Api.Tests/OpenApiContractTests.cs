@@ -1,6 +1,7 @@
 using System.Text.Json;
 using ActionLedger.Api.OpenApi;
 using ActionLedger.Application.Abstractions;
+using ActionLedger.Application.Meetings;
 using ActionLedger.Domain.Users;
 using Xunit;
 
@@ -20,6 +21,60 @@ public sealed class OpenApiContractTests
         string json = await OpenApiExport.GenerateAsync(api.Services, TestContext.Current.CancellationToken);
 
         return JsonDocument.Parse(json).RootElement.Clone();
+    }
+
+    [Fact]
+    public async Task The_per_element_attendee_rule_reaches_the_contract_rather_than_only_a_400()
+    {
+        JsonElement contract = await ContractAsync();
+
+        JsonElement items = contract
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty(nameof(CreateMeetingCommand))
+            .GetProperty("properties")
+            .GetProperty("attendees")
+            .GetProperty("items");
+
+        // AttendeeNamesAttribute is the only thing that enforces this, and [StringLength] cannot:
+        // its IsValid casts to string and throws on an array — so without the schema transformer
+        // `attendees` publishes as a bare array of strings and the generated client learns the
+        // limit from a 400. The snapshot test alone cannot hold this: it byte-compares a file a
+        // re-export would regenerate.
+        AttendeeNamesAttribute bounds = new();
+
+        Assert.Equal(bounds.MinimumLength, items.GetProperty("minLength").GetInt32());
+        Assert.Equal(bounds.MaximumLength, items.GetProperty("maxLength").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_required_member_does_not_publish_itself_as_nullable()
+    {
+        JsonElement contract = await ContractAsync();
+
+        JsonElement meetingDate = contract
+            .GetProperty("components")
+            .GetProperty("schemas")
+            .GetProperty(nameof(CreateMeetingCommand))
+            .GetProperty("properties")
+            .GetProperty("meetingDate");
+
+        // MeetingDate is DateOnly? so that an omitted date is a 400 rather than 0001-01-01, and the
+        // generator derives the published type from the CLR type — so it went out as
+        // ["null","string"] while also sitting in `required`. A client that believed the contract
+        // and sent null was answered with a 400 the schema did not predict.
+        Assert.Equal(JsonValueKind.String, meetingDate.GetProperty("type").ValueKind);
+        Assert.Equal("string", meetingDate.GetProperty("type").GetString());
+
+        Assert.Contains(
+            "meetingDate",
+            contract
+                .GetProperty("components")
+                .GetProperty("schemas")
+                .GetProperty(nameof(CreateMeetingCommand))
+                .GetProperty("required")
+                .EnumerateArray()
+                .Select(name => name.GetString()));
     }
 
     [Fact]

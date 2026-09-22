@@ -44,6 +44,7 @@ public static class InfrastructureRegistration
 
         services.AddScoped<IUnitOfWork, UnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<IMeetingRepository, MeetingRepository>();
         services.AddScoped<IReadDb, ReadDb>();
         services.AddScoped<SeedRepository>();
         services.AddScoped<DatabaseReadiness>();

@@ -1,3 +1,4 @@
+using ActionLedger.Domain.Meetings;
 using ActionLedger.Domain.Users;
 using Microsoft.EntityFrameworkCore;
 
@@ -21,6 +22,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 {
     /// <summary>The people who sign in and whose names are stamped on every write (AD-12).</summary>
     public DbSet<User> Users => Set<User>();
+
+    /// <summary>
+    /// The meetings an Action Officer captures. Each owns its write-once <c>MeetingNotes</c>
+    /// (AD-3, ADR-002), which has no <c>DbSet</c> of its own because it has no lifetime of its own.
+    /// </summary>
+    public DbSet<Meeting> Meetings => Set<Meeting>();
 
     /// <inheritdoc />
     /// <remarks>
@@ -49,8 +56,16 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         // AD-20 puts a `xmin` concurrency token on ProposedAction, TrackedAction, Meeting, and
         // OutboxMessage — the four roots with a state machine. `User` is not one of them and does
-        // not get one; the aggregates that do arrive with their epics and set it in their own
-        // configuration with UseXminAsConcurrencyToken().
+        // not get one. `Meeting` now has its own, set by MeetingConfiguration; ProposedAction,
+        // TrackedAction, and OutboxMessage arrive with their epics and set theirs the same way, in
+        // their own configuration:
+        //
+        //     builder.Property<uint>("xmin").IsRowVersion();
+        //
+        // NpgsqlConcurrencyTokenConvention recognises that shape and binds it to PostgreSQL's
+        // `xmin` system column, so no column is added and no migration operation is produced.
+        // `UseXminAsConcurrencyToken()` is how earlier providers spelled this; it does not exist
+        // in Npgsql.EntityFrameworkCore.PostgreSQL 10.
 
         ModelConventions.Apply(modelBuilder);
     }

@@ -29,3 +29,26 @@ source_spec: `spec-1-6-login-screen-session-shell-and-global-state-patterns.md`
 severity: medium
 reason: SubmitAsync awaits Directory.EnsureLoadedAsync() before NavigateTo(TakeAttemptedRoute() ?? HomeRoute), and ApiClientRegistration constructs its HttpClient without setting Timeout, so the .NET default of 100 seconds applies. The session is already signed in when the await starts, so the user is authenticated but still looking at a disabled Sign in button and a progress bar. The comment above the await claims "awaiting it cannot block the landing" — true of a failure, false of latency, because a swallowed exception still has to arrive before the next statement runs. UserDirectory already anticipates this exact call timing out, so the failure mode was foreseen and its latency consequence was not. Not a defect in the story's acceptance criteria: none of them constrain post-sign-in latency, and nothing renders the roster until Epic 3's owner picker. Uncovered by tests — LoginPageTests gates SignIn (`:153`) but never ListUsers. What would settle it: choose between (a) not awaiting the roster load at all, which matches the spec's own wording "kicks the roster load" and is safe because UserDirectory swallows its failures and leaves IsLoaded false for a later retry, or (b) bounding it with an explicit HttpClient.Timeout or a CancellationTokenSource. (a) is the smaller change.
 status: open
+
+### DW-5: Every `<response code="...">` and `<param>` doc comment on a controller action exports as a bare HTTP reason phrase, so the prose that reads as contract documentation is dead.
+origin: spec-deferred da69baf07498
+location: src/ActionLedger.Api/Controllers/MeetingsController.cs
+source_spec: `spec-2-1-meeting-and-immutable-notes-api.md`
+severity: low
+reason: The exported document gives every response `"description": "Created"`, `"Bad Request"`, `"Not Found"`, `"Conflict"` and emits the `{id}` path parameter with no description; only `[EndpointSummary]` and `[EndpointDescription]` survive the export. Pre-existing rather than caused by this story: `POST /api/v1/auth/login`, `GET /api/v1/users`, `/health`, and `/health/ready` all read the same way, from Stories 1.2 and 1.4. This story roughly triples the volume of that dead prose, which is what made it visible. Settling it means either wiring XML response and parameter documentation into the OpenAPI export or dropping the comments; both are repo-wide decisions, not this story's.
+status: open
+
+### DW-6: List paging counts and windows in two separate statements, so a concurrent insert can make a row repeat on two pages or be skipped, despite the total-order claim.
+origin: spec-deferred 783ed050413c
+location: src/ActionLedger.Application/Meetings/MeetingsQueries.cs
+source_spec: `spec-2-1-meeting-and-immutable-notes-api.md`
+severity: low
+reason: `MeetingsQueries.ListAsync` calls `readDb.CountAsync` and then materializes the windowed query; nothing holds a snapshot across the two. The order is total, so paging is stable against a static table, but not against a concurrent writer. Pre-existing: `UsersQueries` `ListAsync` has the identical shape from Story 1.4, and this story's Code Map directed that it be copied. Settling it means a repeatable-read transaction around both statements or keyset paging, applied to every list endpoint at once rather than to this one.
+status: open
+
+### DW-7: A note containing U+0000 satisfies the published contract and both length guards, but PostgreSQL's character types cannot store a NUL byte, so the save may surface as a 500.
+origin: spec-deferred 8b1db048ee95
+location: src/ActionLedger.Domain/Meetings/MeetingNotes.cs
+source_spec: `spec-2-1-meeting-and-immutable-notes-api.md`
+reason: `System.Text.Json` deserializes `"\u0000"` into a string containing NUL. `[StringLength(50_000, MinimumLength = 1)]` counts it as one character and `MeetingNotes.RequireText` guards length only, so nothing between the request body and `INSERT` refuses it — while `text` is `character varying(50000)`, and PostgreSQL text types reject NUL with SQLSTATE 22021. The intent says any 1–50,000-character text is accepted and stored byte-for-byte, which is not satisfiable for that one character, so the choice between refusing it with a 400 and transforming it is a product decision rather than a coding one. Not reproduced here: it needs a real database, and the existing round-trip tests cover ASCII whitespace and line endings only. What would settle it: a single `MeetingPersistenceTests` case attaching `"a\u0000b"` against the containerized PostgreSQL — if it throws, decide between a 400 and normalization; if it stores, the intent already holds and only the test is missing.
+status: open
