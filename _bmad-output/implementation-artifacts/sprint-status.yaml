@@ -41,8 +41,8 @@ development_status:
   1-3-database-first-migration-migration-bundle-and-seeded-users: done
   1-4-sign-in-and-receive-a-jwt-list-users: done
   1-5-blazor-webassembly-scaffold-with-mudblazor-theme-tokens-and: done
-  1-6-login-screen-session-shell-and-global-state-patterns: done
-  1-7-one-command-compose-environment-with-migrate-api-and-web: done
+  1-6-login-screen-session-shell-and-global-state-patterns: review
+  1-7-one-command-compose-environment-with-migrate-api-and-web: review
   epic-1-retrospective: optional
 
   epic-2: backlog
