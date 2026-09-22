@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Collect quotes for a replacement badge printer",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": "2026-07-24",
+      "confidence": 0.92,
+      "sourceExcerpt": "Priya Ramaswamy will collect quotes for a replacement badge printer by 2026-07-24."
+    },
+    {
+      "description": "Order two spare ribbon spools",
+      "suggestedOwner": "Marcus Bell",
+      "suggestedDueDate": "2026-07-17",
+      "confidence": 0.90,
+      "sourceExcerpt": "Marcus Bell will order two spare ribbon spools by 2026-07-17."
+    }
+  ]
+}

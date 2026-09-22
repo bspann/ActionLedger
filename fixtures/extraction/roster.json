@@ -1,0 +1,19 @@
+{
+  "people": [
+    {
+      "displayName": "Dana Whitfield",
+      "role": "ActionOfficer",
+      "aliases": ["Dana", "D. Whitfield", "Dana W."]
+    },
+    {
+      "displayName": "Priya Ramaswamy",
+      "role": "ActionOfficer",
+      "aliases": ["Priya", "P. Ramaswamy", "Priya R.", "P. Ram"]
+    },
+    {
+      "displayName": "Marcus Bell",
+      "role": "Lead",
+      "aliases": ["Marcus", "M. Bell", "Marcus B."]
+    }
+  ]
+}

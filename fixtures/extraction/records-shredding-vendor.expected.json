@@ -1,0 +1,18 @@
+{
+  "actions": [
+    {
+      "description": "Gather the shredding quotes from the two vendors the cooperative already uses",
+      "suggestedOwner": "Dana Whitfield",
+      "suggestedDueDate": null,
+      "confidence": 0.90,
+      "sourceExcerpt": "Dana Whitfield will gather the shredding quotes from the two vendors the cooperative already uses."
+    },
+    {
+      "description": "Move the full bins into the locked storage room",
+      "suggestedOwner": "Priya Ramaswamy",
+      "suggestedDueDate": null,
+      "confidence": 0.87,
+      "sourceExcerpt": "Priya Ramaswamy will move the full bins into the locked storage room until a pickup is arranged."
+    }
+  ]
+}
