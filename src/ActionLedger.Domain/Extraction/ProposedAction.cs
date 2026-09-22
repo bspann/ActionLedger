@@ -1,12 +1,14 @@
 using System.Globalization;
+using ActionLedger.Domain.Actions;
 using ActionLedger.Domain.Common;
 
 namespace ActionLedger.Domain.Extraction;
 
 /// <summary>
 /// AD-4 — one thing the AI proposed. It is immutable after creation except for its
-/// <see cref="ReviewState"/> and the decision fields Story 3.1 adds: the AI's row and the human's
-/// row are never the same row, so nothing here is ever rewritten to record a decision.
+/// <see cref="ReviewState"/> and its decision copy, which <see cref="Decide"/> writes once: the AI's
+/// row and the human's row are never the same row, so none of the AI's values is ever rewritten to
+/// record a decision.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -51,6 +53,9 @@ public sealed class ProposedAction
     /// <summary><c>confidence.maximum</c> in the committed extraction schema. Inclusive.</summary>
     public const double ConfidenceMaximum = 1;
 
+    /// <summary>The longest rejection reason, after trimming. The <c>rejection_reason</c> column's length.</summary>
+    public const int RejectionReasonMaxLength = 500;
+
     /// <summary>
     /// Only <see cref="ExtractionRun.AddProposals"/> reaches this. It is <c>internal</c> rather
     /// than public so nothing outside the aggregate can mint a proposal that belongs to no run —
@@ -72,8 +77,7 @@ public sealed class ProposedAction
         Confidence = RequireConfidence(draft.Confidence);
         SourceExcerpt = RequireText(draft.SourceExcerpt, "source excerpt", SourceExcerptMinLength, SourceExcerptMaxLength);
 
-        // FR-10 — a proposal is created Pending. Nothing in this story changes it; Story 3.2's
-        // Decide is the only thing that ever will (AD-3).
+        // FR-10 — a proposal is created Pending. Decide is the only thing that ever changes it (AD-3).
         ReviewState = ReviewState.Pending;
     }
 
@@ -117,10 +121,176 @@ public sealed class ProposedAction
     public string SourceExcerpt { get; private set; }
 
     /// <summary>
-    /// Where this proposal stands in review. Always <see cref="ReviewState.Pending"/> in this
-    /// story; Story 3.2's <c>Decide</c> is the only mutation path AD-3 permits.
+    /// Where this proposal stands in review. <see cref="Decide"/> is the only mutation path AD-3
+    /// permits, and it moves a proposal out of <see cref="ReviewState.Pending"/> exactly once.
     /// </summary>
     public ReviewState ReviewState { get; private set; }
+
+    /// <summary>
+    /// Who decided, or <c>null</c> while Pending. A copy for fast reads: the ReviewDecision
+    /// revision is the source of truth, and the two are written in the same call.
+    /// </summary>
+    public Guid? DecidedByUserId { get; private set; }
+
+    /// <summary>When it was decided, in UTC, or <c>null</c> while Pending. A copy, like <see cref="DecidedByUserId"/>.</summary>
+    public DateTimeOffset? DecidedAt { get; private set; }
+
+    /// <summary>
+    /// A rejection's trimmed reason, or <c>null</c> — while Pending, on an approval or edit, and on a
+    /// rejection that gave none. A copy, like <see cref="DecidedByUserId"/>.
+    /// </summary>
+    public string? RejectionReason { get; private set; }
+
+    /// <summary>
+    /// AD-3 / AD-7 — decides this proposal: the only way its Review State changes, and the only way a
+    /// <see cref="TrackedAction"/> comes into existence.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every rule is checked before anything is written, so a refused call leaves the proposal
+    /// Pending with a <c>null</c> decision copy.
+    /// </para>
+    /// <para>
+    /// The revisions are the ReviewDecision (sequence 2, against this proposal) and then one
+    /// FieldEdit per changed field (sequences 3, 4, 5…, against the Tracked Action), in the fixed
+    /// order Description, OwnerUserId, DueDate. They share one instant, so the Audit Trail — one
+    /// read over both targets by <c>OccurredAt</c> then <c>Sequence</c> — puts every FieldEdit
+    /// after the decision. A Pending proposal has exactly its AiProposal revision by construction,
+    /// which is why the decision's sequence needs no lookup.
+    /// </para>
+    /// </remarks>
+    /// <param name="kind">
+    /// The decision. <see cref="DecisionKind.Approved"/> requires the edits to equal the proposal;
+    /// <see cref="DecisionKind.Edited"/> requires at least one field to differ.
+    /// </param>
+    /// <param name="edits">The values sent with the decision, and the pre-selected owner they are diffed against.</param>
+    /// <param name="actorUserId">The User deciding, from <c>ICurrentUser</c> (AD-12).</param>
+    /// <param name="now">The AD-7 shared instant, read once per request from <c>IClock</c>.</param>
+    /// <returns>The Tracked Action, if one was created, and the revisions in order.</returns>
+    /// <exception cref="DomainRuleException">
+    /// The proposal is not Pending, the actor is missing, the kind contradicts the edits, the
+    /// description is blank or too long, or the reason is misplaced or too long.
+    /// </exception>
+    public DecisionResult Decide(DecisionKind kind, DecisionEdits edits, Guid actorUserId, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(edits);
+
+        if (ReviewState != ReviewState.Pending)
+        {
+            throw new DomainRuleException($"This proposal was already decided: it is {ReviewState}.");
+        }
+
+        if (actorUserId == Guid.Empty)
+        {
+            throw new DomainRuleException("A decision must record the User who made it.");
+        }
+
+        DateTimeOffset stamped = now.ToUniversalTime();
+
+        return kind switch
+        {
+            DecisionKind.Approved or DecisionKind.Edited => Accept(kind, edits, actorUserId, stamped),
+            DecisionKind.Rejected => Reject(edits.Reason, actorUserId, stamped),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown decision kind."),
+        };
+    }
+
+    private DecisionResult Accept(DecisionKind kind, DecisionEdits edits, Guid actorUserId, DateTimeOffset stamped)
+    {
+        string description = RequireText(edits.Description!, "description", DescriptionMinLength, DescriptionMaxLength);
+
+        if (!string.IsNullOrWhiteSpace(edits.Reason))
+        {
+            throw new DomainRuleException("A reason is recorded only when a proposal is rejected.");
+        }
+
+        bool descriptionChanged = !string.Equals(description, Description, StringComparison.Ordinal);
+        bool ownerChanged = edits.OwnerUserId != edits.ProposedOwnerUserId;
+        bool dueDateChanged = edits.DueDate != SuggestedDueDate;
+        bool anyChanged = descriptionChanged || ownerChanged || dueDateChanged;
+
+        if (kind == DecisionKind.Approved && anyChanged)
+        {
+            throw new DomainRuleException("An approval takes the proposal as it stands; a changed field makes it an edit.");
+        }
+
+        if (kind == DecisionKind.Edited && !anyChanged)
+        {
+            throw new DomainRuleException("An edit must change the description, the owner, or the due date.");
+        }
+
+        TrackedAction tracked = new(Id, description, edits.OwnerUserId, edits.DueDate, kind, stamped);
+
+        ReviewState decided = kind == DecisionKind.Approved ? ReviewState.Approved : ReviewState.Edited;
+
+        int sequence = ActionRevision.FirstSequence + 1;
+
+        List<ActionRevision> revisions =
+        [
+            ActionRevision.ReviewDecision(Id, sequence, nameof(ReviewState.Pending), decided.ToString(), actorUserId, stamped),
+        ];
+
+        if (descriptionChanged)
+        {
+            revisions.Add(ActionRevision.FieldEdit(
+                tracked.Id, ++sequence, nameof(TrackedAction.Description), Description, description, actorUserId, stamped));
+        }
+
+        if (ownerChanged)
+        {
+            revisions.Add(ActionRevision.FieldEdit(
+                tracked.Id, ++sequence, nameof(TrackedAction.OwnerUserId),
+                FormatOwner(edits.ProposedOwnerUserId), FormatOwner(edits.OwnerUserId), actorUserId, stamped));
+        }
+
+        if (dueDateChanged)
+        {
+            revisions.Add(ActionRevision.FieldEdit(
+                tracked.Id, ++sequence, nameof(TrackedAction.DueDate),
+                FormatDate(SuggestedDueDate), FormatDate(edits.DueDate), actorUserId, stamped));
+        }
+
+        Record(decided, actorUserId, stamped, rejectionReason: null);
+
+        return new DecisionResult(kind, tracked, revisions);
+    }
+
+    private DecisionResult Reject(string? reason, Guid actorUserId, DateTimeOffset stamped)
+    {
+        string? trimmed = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+
+        if (trimmed is { Length: > RejectionReasonMaxLength })
+        {
+            throw new DomainRuleException($"A rejection reason cannot exceed {RejectionReasonMaxLength} characters.");
+        }
+
+        // FR-13 — the reason rides in NewValue behind a fixed prefix, because AD-7 fixes the
+        // revision's columns and FR-12 fixes Field, OldValue and the state name.
+        string newValue = trimmed is null
+            ? nameof(ReviewState.Rejected)
+            : $"{nameof(ReviewState.Rejected)}: {trimmed}";
+
+        ActionRevision decision = ActionRevision.ReviewDecision(
+            Id, ActionRevision.FirstSequence + 1, nameof(ReviewState.Pending), newValue, actorUserId, stamped);
+
+        Record(ReviewState.Rejected, actorUserId, stamped, trimmed);
+
+        return new DecisionResult(DecisionKind.Rejected, TrackedAction: null, [decision]);
+    }
+
+    private void Record(ReviewState decided, Guid actorUserId, DateTimeOffset stamped, string? rejectionReason)
+    {
+        ReviewState = decided;
+        DecidedByUserId = actorUserId;
+        DecidedAt = stamped;
+        RejectionReason = rejectionReason;
+    }
+
+    private static string? FormatOwner(Guid? ownerUserId) =>
+        ownerUserId?.ToString("D", CultureInfo.InvariantCulture);
+
+    private static string? FormatDate(DateOnly? date) =>
+        date?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
 
     private static string RequireOwner(string suggestedOwner)
     {

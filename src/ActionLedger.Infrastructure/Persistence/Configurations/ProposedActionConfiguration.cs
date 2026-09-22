@@ -75,6 +75,16 @@ internal sealed class ProposedActionConfiguration : IEntityTypeConfiguration<Pro
             .IsRequired()
             .HasMaxLength(ReviewStateMaxLength);
 
+        // The decision copy (AD-4): null while Pending, written once by Decide. No foreign key on
+        // the decider, matching `extraction_runs.started_by_user_id` — the actor is a stamp from
+        // the token, not a relationship the proposal navigates.
+        builder.Property(proposal => proposal.DecidedByUserId);
+
+        builder.Property(proposal => proposal.DecidedAt);
+
+        builder.Property(proposal => proposal.RejectionReason)
+            .HasMaxLength(ProposedAction.RejectionReasonMaxLength);
+
         // AD-20 — PostgreSQL's own row version rather than a column the model has to maintain.
         // NpgsqlConcurrencyTokenConvention recognises this shape and binds it to the `xmin` system
         // column, so no column is added to the table and no migration operation is produced.

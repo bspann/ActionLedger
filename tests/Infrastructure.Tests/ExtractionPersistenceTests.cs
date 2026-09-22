@@ -91,8 +91,9 @@ public sealed class ExtractionPersistenceTests(PostgresFixture postgres)
 
         Assert.Equal(
             [
-                "confidence", "description", "extraction_run_id", "id", "ordinal", "review_state",
-                "source_excerpt", "suggested_due_date", "suggested_owner",
+                "confidence", "decided_at", "decided_by_user_id", "description", "extraction_run_id",
+                "id", "ordinal", "rejection_reason", "review_state", "source_excerpt",
+                "suggested_due_date", "suggested_owner",
             ],
             columns.Keys.Order(StringComparer.Ordinal));
 
@@ -106,6 +107,11 @@ public sealed class ExtractionPersistenceTests(PostgresFixture postgres)
 
         // AD-10 — a due date is a calendar day, not an instant.
         Assert.Equal("date", columns["suggested_due_date"]);
+
+        // Story 3.1's decision copy: null while Pending, written once by Decide.
+        Assert.Equal("uuid", columns["decided_by_user_id"]);
+        Assert.Equal("timestamp with time zone", columns["decided_at"]);
+        Assert.Equal("character varying", columns["rejection_reason"]);
     }
 
     [Fact]
