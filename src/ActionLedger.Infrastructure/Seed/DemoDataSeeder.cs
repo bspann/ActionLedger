@@ -106,7 +106,6 @@ public sealed class DemoDataSeeder(
         CancellationToken cancellationToken)
     {
         IUserRepository users = services.GetRequiredService<IUserRepository>();
-        IUnitOfWork unitOfWork = services.GetRequiredService<IUnitOfWork>();
         SeedRepository seedRepository = services.GetRequiredService<SeedRepository>();
         PasswordService passwords = services.GetRequiredService<PasswordService>();
         IClock clock = FixedClock.AtSeedInstant();
@@ -142,7 +141,9 @@ public sealed class DemoDataSeeder(
             created++;
         }
 
-        await unitOfWork.CommitAsync(cancellationToken);
+        // AD-21 — the seeder's writes are history, not news: no outbox row for anything it decides.
+        // The only suppressed save in the solution, and an Architecture test keeps it that way.
+        await context.SaveChangesAsync(suppressOutbox: true, cancellationToken: cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         // AD-21's attribution identity, built from the persisted row so it always points at a
