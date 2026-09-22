@@ -1,5 +1,6 @@
 using ActionLedger.Web.Core;
 using ActionLedger.Web.Core.Api;
+using ActionLedger.Web.Core.Extraction;
 using ActionLedger.Web.Features.Meetings.Data;
 using Xunit;
 
@@ -204,6 +205,116 @@ public sealed class MeetingsServiceTests
 
         Assert.Null(outcome.Failure);
         Assert.Equal(new DateTimeOffset(2026, 9, 21, 14, 3, 0, TimeSpan.Zero), outcome.Value!.SavedAt);
+    }
+
+    [Fact]
+    public async Task List_runs_maps_each_summary_in_the_servers_order_with_web_owned_outcomes()
+    {
+        Guid newest = Guid.CreateVersion7();
+        Guid older = Guid.CreateVersion7();
+
+        StubApiClient client = new();
+        client.Runs =
+        [
+            new RunSummaryDto
+            {
+                Id = newest,
+                StartedAt = new DateTimeOffset(2026, 9, 22, 9, 20, 0, TimeSpan.Zero),
+                PromptVersion = "v1",
+                Provider = "Fake",
+                Model = "fixture-catalog",
+                Outcome = ExtractionOutcome.Succeeded,
+                FailureReason = null,
+                ProposalCount = 3,
+                PendingCount = 2,
+            },
+            new RunSummaryDto
+            {
+                Id = older,
+                StartedAt = new DateTimeOffset(2026, 9, 22, 9, 15, 0, TimeSpan.Zero),
+                PromptVersion = "v1",
+                Provider = "LocalOpenAI",
+                Model = "qwen2.5-7b-instruct",
+                Outcome = ExtractionOutcome.Failed,
+                FailureReason = "The AI returned invalid output twice.",
+                ProposalCount = 0,
+                PendingCount = 0,
+            },
+        ];
+
+        MeetingsService service = new(client);
+
+        MeetingOutcome<IReadOnlyList<RunListItem>> outcome = await service.ListRunsAsync(
+            MeetingId, TestContext.Current.CancellationToken);
+
+        Assert.Null(outcome.Failure);
+        Assert.Equal(MeetingId, client.LastListExtractionRunsId);
+
+        IReadOnlyList<RunListItem> runs = outcome.Value!;
+
+        // The server's order, never re-sorted here.
+        Assert.Equal([newest, older], runs.Select(run => run.Id));
+
+        Assert.Equal(
+            new RunListItem(newest, new DateTimeOffset(2026, 9, 22, 9, 20, 0, TimeSpan.Zero), "v1", "Fake", "fixture-catalog", RunOutcome.Succeeded, null, 3, 2),
+            runs[0]);
+        Assert.Equal(RunOutcome.Failed, runs[1].Outcome);
+        Assert.Equal("The AI returned invalid output twice.", runs[1].FailureReason);
+        Assert.Equal("LocalOpenAI", runs[1].Provider);
+    }
+
+    [Theory]
+    [InlineData(ExtractionOutcome.Succeeded, RunOutcome.Succeeded)]
+    [InlineData(ExtractionOutcome.Failed, RunOutcome.Failed)]
+    public async Task Start_run_posts_for_the_meeting_and_maps_either_outcome(ExtractionOutcome wire, RunOutcome expected)
+    {
+        Guid runId = Guid.CreateVersion7();
+
+        StubApiClient client = new() { StartedRun = new RunDto { Id = runId, Outcome = wire } };
+        MeetingsService service = new(client);
+
+        MeetingOutcome<StartedRun> outcome = await service.StartRunAsync(MeetingId, TestContext.Current.CancellationToken);
+
+        // A Failed run is a 201, so it is a success at this seam; the page decides what it means.
+        Assert.Null(outcome.Failure);
+        Assert.Equal(new StartedRun(runId, expected), outcome.Value);
+        Assert.Equal(1, client.StartExtractionRunCalls);
+        Assert.Equal(MeetingId, client.LastStartExtractionRunId);
+    }
+
+    [Fact]
+    public async Task Start_run_turns_a_refusal_into_a_failure()
+    {
+        StubApiClient client = new() { StartExtractionRunThrows = StubApiClient.Invalid("The meeting has no notes.") };
+        MeetingsService service = new(client);
+
+        MeetingOutcome<StartedRun> outcome = await service.StartRunAsync(MeetingId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(400, outcome.Failure?.StatusCode);
+        Assert.Equal("The meeting has no notes.", outcome.Failure?.Title);
+    }
+
+    [Fact]
+    public async Task Get_provider_maps_the_provider_and_model()
+    {
+        StubApiClient client = new() { AiProvider = new AiProviderDto { Provider = "LocalOpenAI", Model = "qwen2.5-7b-instruct" } };
+        MeetingsService service = new(client);
+
+        MeetingOutcome<ProviderInfo> outcome = await service.GetProviderAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(new ProviderInfo("LocalOpenAI", "qwen2.5-7b-instruct"), outcome.Value);
+    }
+
+    [Fact]
+    public async Task A_failed_run_list_becomes_a_failure()
+    {
+        StubApiClient client = new() { ListExtractionRunsThrows = StubApiClient.Problem(404, "The resource was not found.") };
+        MeetingsService service = new(client);
+
+        MeetingOutcome<IReadOnlyList<RunListItem>> outcome = await service.ListRunsAsync(
+            MeetingId, TestContext.Current.CancellationToken);
+
+        Assert.Equal(404, outcome.Failure?.StatusCode);
     }
 
     [Fact]

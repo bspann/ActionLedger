@@ -61,19 +61,21 @@ public sealed class NotesImmutabilityTests
     }
 
     [Fact]
-    public async Task The_contract_publishes_exactly_the_five_meeting_operations_that_exist_today()
+    public async Task The_contract_publishes_exactly_the_six_meeting_operations_that_exist_today()
     {
         IReadOnlyList<(string Path, string Method)> operations = await MeetingOperationsAsync();
 
         string[] published = [.. operations.Select(operation => $"{operation.Method} {operation.Path}").Order(StringComparer.Ordinal)];
 
-        // The exact set, so a sixth operation under this prefix has to arrive through a decision
+        // The exact set, so a seventh operation under this prefix has to arrive through a decision
         // rather than through a controller someone extended. Story 2.5 added the runs POST; it is
-        // a create, not a mutation of the notes, which is why the rules above still hold.
+        // a create, not a mutation of the notes, which is why the rules above still hold. Story 2.6
+        // added the runs GET, which reads and writes nothing.
         Assert.Equal(
             [
                 $"get {MeetingsPrefix}",
                 $"get {MeetingsPrefix}/{{id}}",
+                $"get {MeetingsPrefix}/{{id}}/runs",
                 $"post {MeetingsPrefix}",
                 $"post {MeetingsPrefix}/{{id}}/runs",
                 $"put {MeetingsPrefix}/{{id}}/notes",

@@ -33,3 +33,55 @@
        sideways. */
     overflow-wrap: break-word;
 }
+
+/*
+  UX-DR6 — the Review State chip's color families, per DESIGN.md's token mapping. The chip's text
+  and, for Edited, its icon carry the meaning; these pairs are the color half of it. Qualified with
+  .mud-chip so they outrank MudBlazor's own default-color chip rule without !important.
+*/
+.mud-chip.al-review-state--pending {
+    background-color: var(--al-primary-container);
+    color: var(--al-on-primary-container);
+}
+
+.mud-chip.al-review-state--approved,
+.mud-chip.al-review-state--edited {
+    background-color: var(--al-success-container);
+    color: var(--al-on-success-container);
+}
+
+.mud-chip.al-review-state--rejected {
+    background-color: var(--al-neutral-container);
+    color: var(--al-on-neutral-container);
+}
+
+/*
+  FR-6 — Run Detail's metadata block: a plain two-column definition list, not a table (DESIGN.md).
+  Terms in the first column, values in the second.
+*/
+.al-run-metadata {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: var(--al-page-gutter);
+    row-gap: 8px;
+    margin: 0 0 24px;
+}
+
+.al-run-metadata dt {
+    font-weight: 500;
+}
+
+.al-run-metadata dd {
+    margin: 0;
+}
+
+/* A failure reason and a dropped excerpt are server text rendered verbatim. */
+.al-verbatim {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+/* The Low Confidence badge on a Run Detail row: the icon and the text carry it; this is the color. */
+.al-low-confidence {
+    color: var(--al-low-confidence);
+}
