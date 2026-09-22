@@ -1,3 +1,4 @@
+using ActionLedger.Application;
 using ActionLedger.Infrastructure.Persistence;
 using ActionLedger.Infrastructure.Seed;
 using Microsoft.EntityFrameworkCore;
@@ -42,6 +43,9 @@ internal static class TestHost
 
         services.AddLogging(logging => logging.SetMinimumLevel(LogLevel.Warning));
         services.AddActionLedgerPersistence(_ => connectionString);
+
+        // AppDbContext takes the outbox's payload builder, which this ring registers.
+        services.AddActionLedgerApplication();
         services.AddActionLedgerSeeding(_ => seed ?? SeedingOn());
 
         configure?.Invoke(services);
