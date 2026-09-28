@@ -50,9 +50,9 @@ Real integrations with Teams, Planner, or Outlook. Audio transcription. Multi-te
 
 - **Backend:** C#, .NET 10, ASP.NET Core Web API with controllers.
 - **Data:** EF Core, code-first migrations, PostgreSQL. Migrations ship as an EF migration bundle in the pipeline.
-- **Front end:** Angular (current stable release), TypeScript strict mode, standalone components, signals, Angular Material for UI.
+- **Front end:** Blazor WebAssembly (.NET 10), MudBlazor for UI. Pivoted from the original Angular plan on 2026-09-21 (see `_bmad-output/planning-artifacts/sprint-change-proposal-2026-09-21.md`) because the developer is fluent in Blazor, not Angular, and the demo requires defending the implementation live.
 - **AI:** `Microsoft.Extensions.AI` abstractions. Providers: Azure OpenAI, local Ollama, and a deterministic fake.
-- **Tests:** xUnit, Testcontainers for PostgreSQL, NetArchTest for architecture rules. Angular unit tests for view model logic. One Playwright smoke test of the happy path.
+- **Tests:** xUnit, Testcontainers for PostgreSQL, NetArchTest for architecture rules. bUnit component tests for the Blazor view models. One Playwright smoke test of the happy path.
 - **Runtime:** Docker and `docker compose up` brings up API, web, and database in one command on macOS and Windows.
 - **Licensing:** permissive open source only (MIT, Apache 2.0, BSD). Do not introduce libraries that have moved to commercial licenses. Use plain handler classes for use cases in place of a mediator library.
 
@@ -68,10 +68,10 @@ src/
   ActionLedger.Infrastructure  EF Core, AI providers, webhook sender, outbox worker.
                                Implements Application interfaces.
   ActionLedger.Api             controllers, auth, DI composition root, OpenAPI.
-web/
-  actionledger-web             Angular app
+  ActionLedger.Web             Blazor WebAssembly app: Core/, Features/, Shared/, Layout/.
 tests/
-  Domain.Tests, Application.Tests, Infrastructure.Tests, Api.Tests, Architecture.Tests, Eval
+  Domain.Tests, Application.Tests, Infrastructure.Tests, Api.Tests, Architecture.Tests,
+  Web.Tests, Web.E2E, Eval
 ```
 
 Rules:
@@ -81,12 +81,13 @@ Rules:
 - **Proof point for the demo:** switching the AI provider between Azure OpenAI, Ollama, and the fake is a configuration change plus an Infrastructure class. Zero edits in Domain or Application. Winston should make this explicit in the architecture document.
 - Backend controllers are the controller element of MVC, returning JSON in place of views.
 
-## 7. Front end: Angular with an explicit MVVM mapping
+## 7. Front end: Blazor, component-per-route with no HTTP in components
 
-- **View:** component template. Rendering and event binding only.
-- **ViewModel:** component class exposing signals and commands for the template. No HTTP calls inside components.
-- **Model:** typed API client services and interfaces generated from the OpenAPI document.
-- Feature folders: `meetings`, `review`, `actions`, `audit`, `auth`. Smart container components per route, presentational child components with inputs and outputs.
+- **View:** the `.razor` markup. Rendering and event binding only.
+- **Component:** the code-behind class exposing state and commands for the markup. No `HttpClient` calls inside components.
+- **Model:** the typed API client generated from the committed `openapi.json` via `NSwag.MSBuild` into `Core/Api/` (git-ignored), referenced only from `Core/` and `Features/*/Data/`.
+- Feature folders: `meetings`, `review`, `actions`, `audit`, `auth`. Smart container components per route, presentational child components with parameters and callbacks.
+- `Architecture.Tests` enforces the "no HTTP outside Core/Data" rule so a violation fails the build rather than a lint pass; there is no Blazor-native lint equivalent.
 - Include a short `/docs/frontend-architecture.md` with a diagram of this mapping, since I will be asked to point it out.
 
 ## 8. Data model: starting point and decisions to document
@@ -116,7 +117,7 @@ Winston: write an ADR for each of these decisions, with the alternative consider
 
 - GitHub Issues and a GitHub Project board. Every story from the backlog becomes an issue. Pull requests link to issues.
 - Trunk-based flow with short-lived feature branches, conventional commits, a PR template with a checklist, and branch protection on `main` requiring green checks.
-- `ci.yml`: restore, build, backend tests including Testcontainers, architecture tests, Angular lint, test, and build, Docker image build.
+- `ci.yml`: restore, build, backend and Blazor tests together through `dotnet test` (bUnit rides the solution build, so there is no separate frontend lint/build step), architecture tests, Docker image build. `Web.E2E` runs in the same `dotnet test` pass as a placeholder until the Playwright browser suite lands with a later story (AD-18); it is not a separate CI job.
 - `eval.yml`: the AI evaluation gate described above, with a path filter.
 - `cd.yml`: on merge to `main`, push images to a registry, run the EF migration bundle, and deploy to Azure Container Apps. A tagged release triggers a versioned deploy.
 - CodeQL, Dependabot, and secret scanning enabled. No secrets in the repo, ever. `.env.example` only.
@@ -141,7 +142,7 @@ All sample content must be **obviously fictional and unclassified**. Use an inve
 4. Architecture Document plus ADRs (Winston): layer diagram, data model diagram, sequence diagram for extraction and approval, sequence diagram for outbox webhook delivery.
 5. Story backlog (John and Winston), sequenced for Amelia:
    - **Saturday:** repo, solution skeleton, CI green on an empty build, architecture tests, domain model, first migration, docker compose.
-   - **Sunday:** extraction use case with fake provider, real provider, schema validation, review and approval flow end to end, Angular review screen.
+   - **Sunday:** extraction use case with fake provider, real provider, schema validation, review and approval flow end to end, Blazor review screen.
    - **Monday:** action list, audit trail, webhook outbox, eval gate, CD to Azure, seed data, Playwright smoke test, `v1.0.0` tag.
    - Pipeline work comes **first**, not last. Every story merges through a pull request with green checks so the commit history tells the ALM story.
 
