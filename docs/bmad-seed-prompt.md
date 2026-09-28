@@ -87,7 +87,7 @@ Rules:
 - **Component:** the code-behind class exposing state and commands for the markup. No `HttpClient` calls inside components.
 - **Model:** the typed API client generated from the committed `openapi.json` via `NSwag.MSBuild` into `Core/Api/` (git-ignored), referenced only from `Core/` and `Features/*/Data/`.
 - Feature folders: `meetings`, `review`, `actions`, `audit`, `auth`. Smart container components per route, presentational child components with parameters and callbacks.
-- `Architecture.Tests` enforces the "no HTTP outside Core/Data" rule so a violation fails the build rather than a lint pass; there is no Blazor-native lint equivalent.
+- `Architecture.Tests` enforces that `HttpClient` and the generated client are only referenced from `Core/` and `Features/*/Data/`, so a violation fails the build rather than a lint pass; there is no Blazor-native lint equivalent.
 - Include a short `/docs/frontend-architecture.md` with a diagram of this mapping, since I will be asked to point it out.
 
 ## 8. Data model: starting point and decisions to document
@@ -117,7 +117,7 @@ Winston: write an ADR for each of these decisions, with the alternative consider
 
 - GitHub Issues and a GitHub Project board. Every story from the backlog becomes an issue. Pull requests link to issues.
 - Trunk-based flow with short-lived feature branches, conventional commits, a PR template with a checklist, and branch protection on `main` requiring green checks.
-- `ci.yml`: restore, build, backend and Blazor tests together through `dotnet test` (bUnit rides the solution build, so there is no separate frontend lint/build step), architecture tests, Docker image build. `Web.E2E` runs in the same `dotnet test` pass as a placeholder until the Playwright browser suite lands with a later story (AD-18); it is not a separate CI job.
+- `ci.yml`: restore, build, backend and Blazor tests together through `dotnet test` (bUnit rides the solution build, so there is no separate frontend lint/build step), architecture tests, Docker image build. `Web.E2E` currently rides the same `dotnet test` pass as a placeholder project. The real Playwright browser suite (AD-18) is not implemented yet and will land with a later story; it is not a separate CI job.
 - `eval.yml`: the AI evaluation gate described above, with a path filter.
 - `cd.yml`: on merge to `main`, push images to a registry, run the EF migration bundle, and deploy to Azure Container Apps. A tagged release triggers a versioned deploy.
 - CodeQL, Dependabot, and secret scanning enabled. No secrets in the repo, ever. `.env.example` only.
