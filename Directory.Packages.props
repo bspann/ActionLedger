@@ -70,7 +70,7 @@
     <!-- `dotnet run` on a WASM project needs the dev server to host wwwroot. Build-time only. -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" />
     <!-- The component library the whole UI is built from (AD-14, DESIGN.md). -->
-    <PackageVersion Include="MudBlazor" Version="9.10.0" />
+    <PackageVersion Include="MudBlazor" Version="9.11.0" />
     <!--
       Generates the typed client from the committed contract in a pre-build target (AD-13).
       Build-time only: it ships the generator executable, not a runtime dependency.
