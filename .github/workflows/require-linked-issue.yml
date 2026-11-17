@@ -1,7 +1,7 @@
 name: require-linked-issue
 
 # Branch protection can require a status check but cannot require issue linkage natively,
-# so this workflow is that check. Every pull request must name the board issue it delivers.
+# so this workflow is that check. Every contributor-authored pull request must name its board issue.
 
 on:
   pull_request:
@@ -27,6 +27,11 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
+
+            if (pr.user?.login === 'dependabot[bot]') {
+              core.info('Skipping issue-link check for Dependabot pull requests.');
+              return;
+            }
 
             // The authoritative signal: issues GitHub itself considers linked, whether that came
             // from a closing keyword in the body or from the Development sidebar.
