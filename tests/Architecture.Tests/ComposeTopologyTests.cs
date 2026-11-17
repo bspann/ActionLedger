@@ -450,6 +450,17 @@ public sealed class ComposeTopologyTests
             StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData(ApiDockerfile)]
+    [InlineData(MigrateDockerfile)]
+    public void Api_build_stages_include_embedded_repository_resources(string dockerfile)
+    {
+        string build = Stage(Read(dockerfile), "build");
+
+        Assert.Contains("COPY prompts/ prompts/", build, StringComparison.Ordinal);
+        Assert.Contains("COPY fixtures/extraction/ fixtures/extraction/", build, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void The_api_image_carries_the_binary_its_healthcheck_runs() =>
         // aspnet:10.0 is Debian slim and ships neither curl nor wget, so without this the

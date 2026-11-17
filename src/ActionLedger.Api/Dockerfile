@@ -27,6 +27,8 @@ COPY src/ActionLedger.Api/*.csproj src/ActionLedger.Api/
 RUN dotnet restore src/ActionLedger.Api/ActionLedger.Api.csproj
 
 COPY src/ src/
+COPY prompts/ prompts/
+COPY fixtures/extraction/ fixtures/extraction/
 
 RUN dotnet build src/ActionLedger.Api/ActionLedger.Api.csproj -c Release --no-restore
 
