@@ -4,7 +4,7 @@
 
 ## Issue
 
-<!-- Required. The `require-linked-issue` check fails without one. -->
+<!-- Required for contributor-authored PRs. Dependabot PRs are exempt. -->
 Closes #
 
 ## Checklist
