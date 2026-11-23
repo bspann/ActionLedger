@@ -77,7 +77,7 @@
     -->
     <PackageVersion Include="NSwag.MSBuild" Version="14.7.1" />
     <!-- bUnit renders components in-process so component tests ride the existing `dotnet test`. -->
-    <PackageVersion Include="bunit" Version="2.11.3" />
+    <PackageVersion Include="bunit" Version="2.15.2" />
   </ItemGroup>
 
   <!--
