@@ -66,7 +66,7 @@
 
   <ItemGroup Label="Web (Story 1.5)">
     <!-- The Blazor WebAssembly host itself; the SDK supplies no implicit version under CPM. -->
-    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.15" />
     <!-- `dotnet run` on a WASM project needs the dev server to host wwwroot. Build-time only. -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.12" />
     <!-- The component library the whole UI is built from (AD-14, DESIGN.md). -->
